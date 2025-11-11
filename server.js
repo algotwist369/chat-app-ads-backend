@@ -13,15 +13,14 @@ const messageRoutes = require("./routes/messageRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const { initializeSocket } = require("./utils/socket");
 const { UPLOAD_DIR, UPLOAD_PUBLIC_PATH } = require("./config/storage");
-const { buildCorsOptions, resolveAllowedOrigins } = require("./config/cors");
+const { buildCorsOptions, buildSocketCorsOptions } = require("./config/cors");
 
 const PORT = process.env.PORT || 4000;
 
 const app = express();
 
 const corsOptions = buildCorsOptions();
-const allowedOrigins = resolveAllowedOrigins();
-const socketOrigin = allowedOrigins.length > 0 ? allowedOrigins : "*";
+const socketCorsOptions = buildSocketCorsOptions();
 
 const helmetConfig = {
   crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -61,9 +60,7 @@ app.use(errorHandler);
 
 const server = http.createServer(app);
 
-const io = initializeSocket(server, {
-  origin: socketOrigin,
-});
+const io = initializeSocket(server, socketCorsOptions);
 app.set("io", io);
 
 connectDatabase()

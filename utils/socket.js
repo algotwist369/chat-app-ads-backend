@@ -185,13 +185,31 @@ const registerSocketHandlers = (io) => {
   });
 };
 
+const DEFAULT_SOCKET_TRANSPORTS = ["websocket", "polling"];
+
 const initializeSocket = (server, corsOptions = {}) => {
+  const {
+    origin = "*",
+    methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    credentials = true,
+    allowedHeaders = ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"],
+    transports = DEFAULT_SOCKET_TRANSPORTS,
+    maxHttpBufferSize,
+    pingTimeout,
+    pingInterval,
+  } = corsOptions;
+
   const io = new Server(server, {
     cors: {
-      origin: corsOptions.origin ?? "*",
-      methods: ["GET", "POST"],
-      credentials: true,
+      origin,
+      methods,
+      credentials,
+      allowedHeaders,
     },
+    transports,
+    ...(maxHttpBufferSize ? { maxHttpBufferSize } : {}),
+    ...(pingTimeout ? { pingTimeout } : {}),
+    ...(pingInterval ? { pingInterval } : {}),
   });
 
   registerSocketHandlers(io);
