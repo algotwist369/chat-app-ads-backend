@@ -17,8 +17,45 @@ const {
 } = require("../services/conversationService");
 const { serializeMessage, serializeConversation } = require("./serializers");
 
+const SOCKET_LOGGING_ENABLED = (process.env.SOCKET_LOGGING ?? "true").toLowerCase() !== "false";
+const DEFAULT_SOCKET_TRANSPORTS = ["websocket", "polling"];
+
+const logSocket = (message, context) => {
+  if (!SOCKET_LOGGING_ENABLED) return;
+  if (context) {
+    console.info(message, context);
+  } else {
+    console.info(message);
+  }
+};
+
 const registerSocketHandlers = (io) => {
   io.on("connection", (socket) => {
+    const { headers = {}, address = null, query = {} } = socket.handshake ?? {};
+    logSocket("[socket] connected", {
+      id: socket.id,
+      address,
+      origin: headers.origin ?? null,
+      transport: socket.conn?.transport?.name ?? null,
+      query,
+    });
+
+    socket.on("disconnect", (reason) => {
+      logSocket("[socket] disconnected", {
+        id: socket.id,
+        reason,
+        managerId: socket.data.managerId ?? null,
+        customerId: socket.data.customerId ?? null,
+      });
+    });
+
+    socket.on("error", (error) => {
+      logSocket("[socket] client error", {
+        id: socket.id,
+        error: error?.message ?? error,
+      });
+    });
+
     socket.on("session:init", ({ managerId, customerId }) => {
       if (managerId) {
         socket.join(`manager:${managerId}`);
@@ -183,9 +220,15 @@ const registerSocketHandlers = (io) => {
       }
     });
   });
-};
 
-const DEFAULT_SOCKET_TRANSPORTS = ["websocket", "polling"];
+  io.engine.on("connection_error", (error) => {
+    logSocket("[socket] handshake error", {
+      code: error?.code ?? null,
+      message: error?.message ?? null,
+      context: error?.context ?? null,
+    });
+  });
+};
 
 const initializeSocket = (server, corsOptions = {}) => {
   const {

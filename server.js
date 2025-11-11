@@ -45,6 +45,33 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/debug/socket", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({
+    http: {
+      allowedOrigins: corsOptions.allowedOriginsList ?? [],
+      methods: corsOptions.methods ?? [],
+      allowedHeaders: corsOptions.allowedHeaders ?? [],
+      exposedHeaders: corsOptions.exposedHeaders ?? [],
+      credentials: Boolean(corsOptions.credentials),
+    },
+    socket: {
+      allowedOrigins: socketCorsOptions.allowedOriginsList ?? [],
+      methods: socketCorsOptions.methods ?? [],
+      allowedHeaders: socketCorsOptions.allowedHeaders ?? [],
+      transports: socketCorsOptions.transports ?? ["websocket", "polling"],
+      credentials: Boolean(socketCorsOptions.credentials),
+      pingTimeout: socketCorsOptions.pingTimeout ?? null,
+      pingInterval: socketCorsOptions.pingInterval ?? null,
+      maxHttpBufferSize: socketCorsOptions.maxHttpBufferSize ?? null,
+    },
+    env: {
+      nodeEnv: process.env.NODE_ENV ?? "development",
+      socketLogging: process.env.SOCKET_LOGGING ?? "true",
+    },
+  });
+});
+
 app.use("/api/managers", managerRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/conversations", conversationRoutes);

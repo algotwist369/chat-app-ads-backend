@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -20,14 +22,16 @@ const normalizeOriginValue = (value) => {
   return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
 };
 
-const parseOrigins = (raw) => {
+const parseCsvList = (raw) => {
   if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(normalizeOriginValue).filter(Boolean);
+  if (Array.isArray(raw)) return raw.map((item) => item && item.toString()).filter(Boolean);
   return raw
     .split(",")
-    .map(normalizeOriginValue)
+    .map((item) => item.trim())
     .filter(Boolean);
 };
+
+const parseOrigins = (raw) => parseCsvList(raw).map(normalizeOriginValue).filter(Boolean);
 
 const hasAllowAllFlag = (origins) =>
   origins.some((origin) => {
@@ -109,6 +113,19 @@ const resolveAllowedOrigins = () => {
   return DEFAULT_ALLOWED_ORIGINS;
 };
 
+const resolveSocketTransports = () => {
+  const transports = parseCsvList(process.env.SOCKET_TRANSPORTS);
+  if (transports.length === 0) return undefined;
+  return transports;
+};
+
+const parseIntegerEnv = (key) => {
+  const raw = process.env[key];
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
 const buildCorsOriginHandler = (allowedOrigins) => {
   if (!allowedOrigins || allowedOrigins.length === 0 || hasAllowAllFlag(allowedOrigins)) {
     return (origin, callback) => callback(null, true);
@@ -145,16 +162,27 @@ const buildCorsOptions = () => {
     methods: DEFAULT_ALLOWED_METHODS,
     allowedHeaders: DEFAULT_ALLOWED_HEADERS,
     exposedHeaders: DEFAULT_EXPOSED_HEADERS,
+    allowedOriginsList: allowedOrigins,
   };
 };
 
 const buildSocketCorsOptions = () => {
   const allowedOrigins = resolveAllowedOrigins();
+  const transports = resolveSocketTransports();
+  const pingTimeout = parseIntegerEnv("SOCKET_PING_TIMEOUT");
+  const pingInterval = parseIntegerEnv("SOCKET_PING_INTERVAL");
+  const maxHttpBufferSize = parseIntegerEnv("SOCKET_MAX_BUFFER_BYTES");
+
   return {
     origin: buildCorsOriginHandler(allowedOrigins),
     credentials: true,
     methods: DEFAULT_ALLOWED_METHODS,
     allowedHeaders: DEFAULT_ALLOWED_HEADERS,
+    transports,
+    pingTimeout,
+    pingInterval,
+    maxHttpBufferSize,
+    allowedOriginsList: allowedOrigins,
   };
 };
 
