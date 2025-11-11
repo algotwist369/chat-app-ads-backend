@@ -20,7 +20,6 @@ const ManagerSchema = new Schema(
       lowercase: true,
       trim: true,
       unique: true,
-      index: true,
     },
     contactEmail: {
       type: String,
@@ -28,7 +27,6 @@ const ManagerSchema = new Schema(
       lowercase: true,
       trim: true,
       unique: true,
-      index: true,
     },
     passwordHash: {
       type: String,
@@ -70,10 +68,6 @@ const ManagerSchema = new Schema(
     timestamps: true,
   },
 );
-
-ManagerSchema.index({ businessSlug: 1 });
-ManagerSchema.index({ contactEmail: 1 });
-ManagerSchema.index({ inviteToken: 1 }, { sparse: true });
 
 module.exports = mongoose.models.Manager || mongoose.model("Manager", ManagerSchema);
 
