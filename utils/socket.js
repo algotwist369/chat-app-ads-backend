@@ -17,16 +17,67 @@ const {
 } = require("../services/conversationService");
 const { serializeMessage, serializeConversation } = require("./serializers");
 
+// Track online users: Map<userId, Set<socketId>>
+const onlineUsers = new Map();
+
+const notifyPresenceChange = (io, userId, userType, isOnline) => {
+  const presenceEvent = {
+    userId,
+    userType,
+    isOnline,
+    timestamp: new Date().toISOString(),
+  };
+
+  // Notify manager's room if it's a customer going online/offline
+  if (userType === "customer") {
+    // We need to find which manager this customer belongs to
+    // This will be handled by emitting to all managers for now
+    // In a production system, you'd want to track customer-manager relationships
+    io.emit("presence:update", presenceEvent);
+  } else if (userType === "manager") {
+    // Notify all customers of this manager (or we can be more specific)
+    io.emit("presence:update", presenceEvent);
+  }
+};
+
 const registerSocketHandlers = (io) => {
   io.on("connection", (socket) => {
     socket.on("session:init", ({ managerId, customerId }) => {
       if (managerId) {
         socket.join(`manager:${managerId}`);
         socket.data.managerId = managerId;
+        
+        // Track manager as online
+        const managerKey = `manager:${managerId}`;
+        const wasAlreadyOnline = onlineUsers.has(managerKey) && onlineUsers.get(managerKey).size > 0;
+        
+        if (!onlineUsers.has(managerKey)) {
+          onlineUsers.set(managerKey, new Set());
+        }
+        onlineUsers.get(managerKey).add(socket.id);
+        
+        // Only notify if manager just came online (wasn't online before)
+        if (!wasAlreadyOnline) {
+          notifyPresenceChange(io, managerId, "manager", true);
+        }
       }
       if (customerId) {
         socket.join(`customer:${customerId}`);
         socket.data.customerId = customerId;
+        
+        // Track customer as online
+        const customerKey = `customer:${customerId}`;
+        const wasAlreadyOnline = onlineUsers.has(customerKey) && onlineUsers.get(customerKey).size > 0;
+        
+        if (!onlineUsers.has(customerKey)) {
+          onlineUsers.set(customerKey, new Set());
+        }
+        onlineUsers.get(customerKey).add(socket.id);
+        
+        // Only notify if customer just came online (wasn't online before)
+        if (!wasAlreadyOnline) {
+          notifyPresenceChange(io, customerId, "customer", true);
+        }
       }
     });
 
@@ -180,6 +231,38 @@ const registerSocketHandlers = (io) => {
       } catch (error) {
         if (callback) callback({ ok: false, message: error.message });
         else socket.emit("error", { message: error.message });
+      }
+    });
+
+    // Handle disconnect
+    socket.on("disconnect", () => {
+      const managerId = socket.data.managerId;
+      const customerId = socket.data.customerId;
+
+      if (managerId) {
+        const managerKey = `manager:${managerId}`;
+        const sockets = onlineUsers.get(managerKey);
+        if (sockets) {
+          sockets.delete(socket.id);
+          if (sockets.size === 0) {
+            onlineUsers.delete(managerKey);
+            // Manager went offline
+            notifyPresenceChange(io, managerId, "manager", false);
+          }
+        }
+      }
+
+      if (customerId) {
+        const customerKey = `customer:${customerId}`;
+        const sockets = onlineUsers.get(customerKey);
+        if (sockets) {
+          sockets.delete(socket.id);
+          if (sockets.size === 0) {
+            onlineUsers.delete(customerKey);
+            // Customer went offline
+            notifyPresenceChange(io, customerId, "customer", false);
+          }
+        }
       }
     });
   });

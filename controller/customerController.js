@@ -1,7 +1,7 @@
 const { validationResult } = require("express-validator");
 require("dotenv").config();
 const bcrypt = require("bcryptjs");
-const { Customer, Manager } = require("../models");
+const { Customer, Manager, Conversation } = require("../models");
 const { serializeCustomer, serializeManager } = require("../utils/serializers");
 const asyncHandler = require("../utils/asyncHandler");
 const { signToken } = require("../utils/tokens");
@@ -86,11 +86,38 @@ const customerJoin = asyncHandler(async (req, res) => {
     });
   }
 
-  await ensureConversation(manager._id, customer._id, {
+  // Check if conversation already existed before ensuring it
+  const existingConversation = await Conversation.findOne({
+    manager: manager._id,
+    customer: customer._id,
+  });
+  const wasNewConversation = !existingConversation;
+
+  const conversation = await ensureConversation(manager._id, customer._id, {
     managerName: manager.managerName ?? manager.businessName ?? "Manager",
     customerName: customer.name ?? "Customer",
     customerPhone: customer.phone ?? null,
   });
+
+  // Emit socket event to notify manager about new customer/conversation
+  const io = req.app.get("io");
+  if (io) {
+    const { getConversationById } = require("../services/conversationService");
+    const { serializeConversation } = require("../utils/serializers");
+    try {
+      const fullConversation = await getConversationById(conversation._id);
+      const serialized = serializeConversation(fullConversation, []);
+      
+      if (wasNewConversation) {
+        // Only emit "new" event for newly created conversations
+        io.to(`manager:${manager._id.toString()}`).emit("conversation:new", serialized);
+      }
+      // Always emit updated event for compatibility
+      io.to(`manager:${manager._id.toString()}`).emit("conversation:updated", serialized);
+    } catch (error) {
+      console.error("Failed to emit new customer notification:", error);
+    }
+  }
 
   const token = signToken({
     sub: customer._id.toString(),
