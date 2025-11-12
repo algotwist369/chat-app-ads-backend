@@ -42,8 +42,6 @@ const ManagerSchema = new Schema(
     },
     inviteToken: {
       type: String,
-      unique: true,
-      sparse: true,
     },
     isActive: {
       type: Boolean,
@@ -68,6 +66,9 @@ const ManagerSchema = new Schema(
     timestamps: true,
   },
 );
+
+// inviteToken needs sparse unique index to allow multiple null values while maintaining uniqueness
+ManagerSchema.index({ inviteToken: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.models.Manager || mongoose.model("Manager", ManagerSchema);
 

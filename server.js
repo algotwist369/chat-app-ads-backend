@@ -13,14 +13,15 @@ const messageRoutes = require("./routes/messageRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const { initializeSocket } = require("./utils/socket");
 const { UPLOAD_DIR, UPLOAD_PUBLIC_PATH } = require("./config/storage");
-const { buildCorsOptions, buildSocketCorsOptions } = require("./config/cors");
+const { buildCorsOptions, resolveAllowedOrigins } = require("./config/cors");
 
 const PORT = process.env.PORT || 4000;
 
 const app = express();
 
 const corsOptions = buildCorsOptions();
-const socketCorsOptions = buildSocketCorsOptions();
+const allowedOrigins = resolveAllowedOrigins();
+const socketOrigin = allowedOrigins.length > 0 ? allowedOrigins : "*";
 
 const helmetConfig = {
   crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -45,33 +46,6 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.get("/debug/socket", (req, res) => {
-  res.set("Cache-Control", "no-store");
-  res.json({
-    http: {
-      allowedOrigins: corsOptions.allowedOriginsList ?? [],
-      methods: corsOptions.methods ?? [],
-      allowedHeaders: corsOptions.allowedHeaders ?? [],
-      exposedHeaders: corsOptions.exposedHeaders ?? [],
-      credentials: Boolean(corsOptions.credentials),
-    },
-    socket: {
-      allowedOrigins: socketCorsOptions.allowedOriginsList ?? [],
-      methods: socketCorsOptions.methods ?? [],
-      allowedHeaders: socketCorsOptions.allowedHeaders ?? [],
-      transports: socketCorsOptions.transports ?? ["websocket", "polling"],
-      credentials: Boolean(socketCorsOptions.credentials),
-      pingTimeout: socketCorsOptions.pingTimeout ?? null,
-      pingInterval: socketCorsOptions.pingInterval ?? null,
-      maxHttpBufferSize: socketCorsOptions.maxHttpBufferSize ?? null,
-    },
-    env: {
-      nodeEnv: process.env.NODE_ENV ?? "development",
-      socketLogging: process.env.SOCKET_LOGGING ?? "true",
-    },
-  });
-});
-
 app.use("/api/managers", managerRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/conversations", conversationRoutes);
@@ -87,7 +61,9 @@ app.use(errorHandler);
 
 const server = http.createServer(app);
 
-const io = initializeSocket(server, socketCorsOptions);
+const io = initializeSocket(server, {
+  origin: socketOrigin,
+});
 app.set("io", io);
 
 connectDatabase()

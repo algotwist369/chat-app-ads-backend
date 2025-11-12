@@ -23,6 +23,32 @@ const handleValidation = (req) => {
   }
 };
 
+// Normalize Indian phone number to standard 10-digit format
+const normalizeIndianPhone = (phone) => {
+  if (!phone || typeof phone !== "string") {
+    return phone;
+  }
+  
+  // Remove spaces and common separators
+  let cleaned = phone.trim().replace(/[\s\-\(\)]/g, "");
+  
+  // Remove +91 prefix if present
+  if (cleaned.startsWith("+91")) {
+    cleaned = cleaned.substring(3);
+  }
+  // Remove 91 prefix if present (without +)
+  else if (cleaned.startsWith("91") && cleaned.length === 12) {
+    cleaned = cleaned.substring(2);
+  }
+  // Remove leading 0 if present
+  else if (cleaned.startsWith("0")) {
+    cleaned = cleaned.substring(1);
+  }
+  
+  // Return cleaned 10-digit number
+  return cleaned;
+};
+
 const customerJoin = asyncHandler(async (req, res) => {
   handleValidation(req);
 
@@ -35,7 +61,8 @@ const customerJoin = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  const normalizedPhone = phone.trim();
+  // Normalize phone to standard 10-digit Indian format
+  const normalizedPhone = normalizeIndianPhone(phone);
   const normalizedEmail = email?.trim()?.toLowerCase() ?? null;
 
   let customer = await Customer.findOne({
