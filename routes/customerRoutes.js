@@ -5,6 +5,9 @@ const {
   getCustomerProfile,
   getCustomerConversation,
   getWorkspaceBySlug,
+  getManagerCustomers,
+  updateCustomer,
+  deleteCustomer,
 } = require("../controller/customerController");
 
 const router = express.Router();
@@ -134,6 +137,35 @@ router.get(
   "/workspace/:businessSlug",
   [param("businessSlug").isString().trim().notEmpty()],
   getWorkspaceBySlug,
+);
+
+// Manager-only routes for customer management
+router.get(
+  "/manager/:managerId",
+  [param("managerId").isMongoId()],
+  getManagerCustomers,
+);
+
+router.put(
+  "/:id",
+  [
+    param("id").isMongoId(),
+    body("managerId").isMongoId().withMessage("Manager ID is required"),
+    body("name").optional().isString().trim(),
+    body("email").optional().isEmail(),
+    body("phone").optional().isString(),
+    body("status").optional().isIn(["active", "inactive", "blocked"]),
+  ],
+  updateCustomer,
+);
+
+router.delete(
+  "/:id",
+  [
+    param("id").isMongoId(),
+    body("managerId").isMongoId().withMessage("Manager ID is required"),
+  ],
+  deleteCustomer,
 );
 
 module.exports = router;

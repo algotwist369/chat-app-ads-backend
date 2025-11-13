@@ -197,8 +197,12 @@ const MessageSchema = new Schema(
   },
 );
 
-MessageSchema.index({ conversation: 1, createdAt: 1 });
+// Compound indexes for common query patterns
+MessageSchema.index({ conversation: 1, createdAt: 1 }); // For chronological message retrieval
+MessageSchema.index({ conversation: 1, createdAt: -1 }); // For reverse chronological (newest first)
+MessageSchema.index({ conversation: 1, authorType: 1, createdAt: -1 }); // For auto-chat queries
 MessageSchema.index({ author: 1 });
+MessageSchema.index({ conversation: 1, authorType: 1 }); // For filtering by author type
 
 module.exports = mongoose.models.Message || mongoose.model("Message", MessageSchema);
 

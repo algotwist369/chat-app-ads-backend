@@ -10,10 +10,12 @@ const managerRoutes = require("./routes/managerRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const conversationRoutes = require("./routes/conversationRoutes");
 const messageRoutes = require("./routes/messageRoutes");
+const autoReplyRoutes = require("./routes/autoReplyRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const { initializeSocket } = require("./utils/socket");
 const { UPLOAD_DIR, UPLOAD_PUBLIC_PATH } = require("./config/storage");
 const { buildCorsOptions, resolveAllowedOrigins } = require("./config/cors");
+const { apiLimiter, messageLimiter, uploadLimiter } = require("./middleware/rateLimiter");
 
 const PORT = process.env.PORT || 4000;
 
@@ -30,8 +32,13 @@ const helmetConfig = {
 
 app.use(helmet(helmetConfig));
 app.use(cors(corsOptions));
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+
+// Apply general rate limiting to all routes
+app.use(apiLimiter);
+
+// Reduced payload limit for better performance and security
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 app.use(UPLOAD_PUBLIC_PATH, cors(corsOptions), express.static(UPLOAD_DIR, { maxAge: "7d", index: false }));
 
 if (process.env.NODE_ENV !== "test") {
@@ -42,14 +49,32 @@ if (process.env.NODE_ENV !== "test") {
   );
 }
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+// Health check endpoint with database status
+app.get("/health", async (req, res) => {
+  const mongoose = require("mongoose");
+  const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+  res.json({ 
+    status: "ok",
+    database: dbStatus,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Request timeout middleware (30 seconds)
+app.use((req, res, next) => {
+  req.setTimeout(30000, () => {
+    if (!res.headersSent) {
+      res.status(408).json({ error: "Request timeout" });
+    }
+  });
+  next();
 });
 
 app.use("/api/managers", managerRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/conversations", conversationRoutes);
-app.use("/api/messages", messageRoutes);
+app.use("/api/messages", messageLimiter, messageRoutes); // Apply message rate limiting
+app.use("/api/auto-replies", autoReplyRoutes);
 
 app.use((req, res, next) => {
   const error = new Error("Route not found");

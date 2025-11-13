@@ -1,6 +1,7 @@
 const express = require("express");
 const { body, param } = require("express-validator");
 const { upload, MAX_FILES } = require("../middleware/upload");
+const { uploadLimiter } = require("../middleware/rateLimiter");
 const { sendMessage, editMessage, deleteMessage, toggleReaction } = require("../controller/messageController");
 
 const MAX_TEXT_LENGTH = parseInt(process.env.MESSAGE_MAX_LENGTH ?? "2000", 10);
@@ -9,6 +10,7 @@ const router = express.Router();
 
 router.post(
   "/",
+  uploadLimiter, // Apply upload rate limiting
   upload.array("attachments", MAX_FILES),
   [
     body("conversationId").isMongoId(),
@@ -29,6 +31,7 @@ router.post(
 
 router.patch(
   "/:messageId",
+  uploadLimiter, // Apply upload rate limiting
   upload.array("attachments", MAX_FILES),
   [
     param("messageId").isMongoId(),

@@ -18,10 +18,25 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  if (!file?.mimetype) {
+  if (!file) {
     cb(new multer.MulterError("LIMIT_UNEXPECTED_FILE", file?.fieldname ?? "attachments"));
     return;
   }
+  
+  // Validate mimetype
+  if (!file.mimetype) {
+    cb(new multer.MulterError("LIMIT_UNEXPECTED_FILE", file?.fieldname ?? "attachments"));
+    return;
+  }
+  
+  // Validate file size (additional check)
+  const maxSize = MAX_FILE_SIZE_MB * 1024 * 1024;
+  if (file.size && file.size > maxSize) {
+    cb(new Error(`File size exceeds ${MAX_FILE_SIZE_MB}MB limit`));
+    return;
+  }
+  
+  // Allow all file types (images, videos, documents, etc.)
   cb(null, true);
 };
 

@@ -3,6 +3,7 @@ module.exports = {
   Customer: require("./Customer"),
   Conversation: require("./Conversation"),
   Message: require("./Message"),
+  AutoReply: require("./AutoReply"),
 };
 
 

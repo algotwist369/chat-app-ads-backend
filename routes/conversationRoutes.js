@@ -50,6 +50,12 @@ router.post(
   conversationController.setConversationMuteHandler,
 );
 
+router.post(
+  "/:conversationId/disable-auto-chat",
+  [param("conversationId").isMongoId()],
+  conversationController.disableAutoChatHandler,
+);
+
 module.exports = router;
 
 

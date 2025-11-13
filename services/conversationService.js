@@ -61,6 +61,8 @@ const ensureConversation = async (managerId, customerId, metadata = {}) => {
     metadata: derivedMetadata,
     lastMessageSnippet: `Conversation created between ${derivedMetadata.customerName} and ${derivedMetadata.managerName}.`,
     lastMessageAt: new Date(),
+    autoChatEnabled: true, // Enable auto-chat for new conversations
+    autoChatMessageCount: 0,
   });
 
   await Message.create({

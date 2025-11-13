@@ -6,11 +6,13 @@ const {
   getManagerProfile,
   updateManagerProfile,
 } = require("../controller/managerController");
+const { authLimiter } = require("../middleware/rateLimiter");
 
 const router = express.Router();
 
 router.post(
   "/signup",
+  authLimiter, // Apply rate limiting to prevent abuse
   [
     body("managerName").isString().trim().notEmpty(),
     body("businessName").isString().trim().notEmpty(),
@@ -25,6 +27,7 @@ router.post(
 
 router.post(
   "/login",
+  authLimiter, // Apply rate limiting to prevent brute force attacks
   [body("email").isString().isEmail(), body("password").isString().isLength({ min: 8 })],
   loginManager,
 );

@@ -122,6 +122,37 @@ const registerSocketHandlers = (io) => {
         const serialized = serializeMessage(message);
         const room = `conversation:${serialized.conversationId}`;
         io.to(room).emit("message:new", serialized);
+        
+        // If customer sent a message and auto-chat is enabled, process auto-response
+        if (payload.authorType === "customer" && serialized.conversationId) {
+          const { processCustomerMessage } = require("../services/autoChatService");
+          const { Conversation } = require("../models");
+          const conversation = await Conversation.findById(serialized.conversationId);
+          
+          if (conversation && conversation.autoChatEnabled) {
+            // Process auto-response asynchronously
+            processCustomerMessage(serialized.conversationId, payload.content, payload.action)
+              .then((autoResponse) => {
+                if (autoResponse) {
+                  const autoSerialized = serializeMessage(autoResponse);
+                  io.to(room).emit("message:new", autoSerialized);
+                  
+                  // Update conversation
+                  getConversationById(serialized.conversationId)
+                    .then((updatedConv) => {
+                      const convSerialized = serializeConversation(updatedConv, []);
+                      io.to(`manager:${updatedConv.manager}`).emit("conversation:updated", convSerialized);
+                      io.to(`customer:${updatedConv.customer}`).emit("conversation:updated", convSerialized);
+                    })
+                    .catch((err) => console.error("Failed to update conversation:", err));
+                }
+              })
+              .catch((error) => {
+                console.error("Failed to process auto-response:", error);
+              });
+          }
+        }
+        
         if (callback) callback({ ok: true, message: serialized });
       } catch (error) {
         if (callback) callback({ ok: false, message: error.message });

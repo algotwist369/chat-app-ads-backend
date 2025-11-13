@@ -181,6 +181,8 @@ const serializeConversation = (conversationDoc, messages = []) => {
     isMuted,
     mutedForManager,
     mutedForCustomer,
+    autoChatEnabled,
+    autoChatMessageCount,
     createdAt,
     updatedAt,
   } = conversation;
@@ -209,6 +211,8 @@ const serializeConversation = (conversationDoc, messages = []) => {
       manager: Boolean(mutedForManager ?? false) || Boolean(isMuted),
       customer: Boolean(mutedForCustomer ?? false) || Boolean(isMuted),
     },
+    autoChatEnabled: Boolean(autoChatEnabled ?? true),
+    autoChatMessageCount: autoChatMessageCount ?? 0,
     createdAt,
     updatedAt,
     messages: Array.isArray(messages) ? messages.map(serializeMessage) : [],

@@ -63,16 +63,56 @@ const sendMessage = asyncHandler(async (req, res) => {
       return parsed && typeof parsed === "object" ? parsed : null;
     })(),
     status: req.body.status,
+    action: req.body.action || null, // Extract action for auto-chat
   };
 
   try {
     const message = await createMessage(payload);
-    await invalidateConversationCaches(message.conversation.toString());
+    // Get conversation to extract manager and customer IDs for selective cache invalidation
+    const { Conversation } = require("../models");
+    const conversation = await Conversation.findById(message.conversation).select("manager customer").lean();
+    await invalidateConversationCaches(
+      message.conversation.toString(),
+      conversation?.manager?.toString(),
+      conversation?.customer?.toString()
+    );
 
     const serialized = serializeMessage(message);
     const io = req.app.get("io");
     if (io) {
       io.to(`conversation:${serialized.conversationId}`).emit("message:new", serialized);
+    }
+
+    // If customer sent a message and auto-chat is enabled, process auto-response
+    if (payload.authorType === "customer" && serialized.conversationId) {
+      const { processCustomerMessage } = require("../services/autoChatService");
+      const { Conversation } = require("../models");
+      const conversation = await Conversation.findById(serialized.conversationId);
+      
+      if (conversation && conversation.autoChatEnabled) {
+        // Process auto-response asynchronously (don't block the response)
+        processCustomerMessage(serialized.conversationId, payload.content, payload.action)
+          .then((autoResponse) => {
+            if (autoResponse && io) {
+              const autoSerialized = serializeMessage(autoResponse);
+              io.to(`conversation:${serialized.conversationId}`).emit("message:new", autoSerialized);
+              
+              // Update conversation
+              const { getConversationById } = require("../services/conversationService");
+              const { serializeConversation } = require("../utils/serializers");
+              getConversationById(serialized.conversationId)
+                .then((updatedConv) => {
+                  const convSerialized = serializeConversation(updatedConv, []);
+                  io.to(`manager:${updatedConv.manager}`).emit("conversation:updated", convSerialized);
+                  io.to(`customer:${updatedConv.customer}`).emit("conversation:updated", convSerialized);
+                })
+                .catch((err) => console.error("Failed to update conversation:", err));
+            }
+          })
+          .catch((error) => {
+            console.error("Failed to process auto-response:", error);
+          });
+      }
     }
 
     res.status(201).json({
@@ -132,7 +172,14 @@ const editMessage = asyncHandler(async (req, res) => {
     message = await ensureMessageExists(messageId);
   }
 
-  await invalidateConversationCaches(message.conversation.toString());
+  // Get conversation to extract manager and customer IDs for selective cache invalidation
+  const { Conversation } = require("../models");
+  const conversation = await Conversation.findById(message.conversation).select("manager customer").lean();
+  await invalidateConversationCaches(
+    message.conversation.toString(),
+    conversation?.manager?.toString(),
+    conversation?.customer?.toString()
+  );
   const serialized = serializeMessage(message);
   const io = req.app.get("io");
   if (io) {
@@ -147,7 +194,14 @@ const deleteMessageHandler = asyncHandler(async (req, res) => {
   handleValidation(req);
   const { messageId } = req.params;
   const message = await deleteMessage({ messageId });
-  await invalidateConversationCaches(message.conversation.toString());
+  // Get conversation to extract manager and customer IDs for selective cache invalidation
+  const { Conversation } = require("../models");
+  const conversation = await Conversation.findById(message.conversation).select("manager customer").lean();
+  await invalidateConversationCaches(
+    message.conversation.toString(),
+    conversation?.manager?.toString(),
+    conversation?.customer?.toString()
+  );
   const payload = {
     messageId: messageId,
     conversationId: message.conversation.toString(),
@@ -164,7 +218,14 @@ const toggleReactionHandler = asyncHandler(async (req, res) => {
   const { messageId } = req.params;
   const { emoji, actorType } = req.body;
   const message = await toggleReaction({ messageId, emoji, actorType });
-  await invalidateConversationCaches(message.conversation.toString());
+  // Get conversation to extract manager and customer IDs for selective cache invalidation
+  const { Conversation } = require("../models");
+  const conversation = await Conversation.findById(message.conversation).select("manager customer").lean();
+  await invalidateConversationCaches(
+    message.conversation.toString(),
+    conversation?.manager?.toString(),
+    conversation?.customer?.toString()
+  );
   const serialized = serializeMessage(message);
   const io = req.app.get("io");
   if (io) {
