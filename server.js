@@ -5,6 +5,7 @@ const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
 const helmet = require("helmet");
+const compression = require("compression");
 const { connectDatabase } = require("./config/database");
 const managerRoutes = require("./routes/managerRoutes");
 const customerRoutes = require("./routes/customerRoutes");
@@ -21,6 +22,10 @@ const PORT = process.env.PORT || 4000;
 
 const app = express();
 
+// Behind reverse proxies/load balancers (e.g., Nginx, Cloudflare), enable trust proxy
+// This allows express-rate-limit to read X-Forwarded-For safely
+app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
+
 const corsOptions = buildCorsOptions();
 const allowedOrigins = resolveAllowedOrigins();
 const socketOrigin = allowedOrigins.length > 0 ? allowedOrigins : "*";
@@ -31,6 +36,8 @@ const helmetConfig = {
 };
 
 app.use(helmet(helmetConfig));
+// Gzip compression for responses
+app.use(compression());
 app.use(cors(corsOptions));
 
 // Apply general rate limiting to all routes
