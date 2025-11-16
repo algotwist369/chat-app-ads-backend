@@ -30,12 +30,10 @@ const notifyPresenceChange = (io, userId, userType, isOnline) => {
 
   // Notify manager's room if it's a customer going online/offline
   if (userType === "customer") {
-    // We need to find which manager this customer belongs to
-    // This will be handled by emitting to all managers for now
-    // In a production system, you'd want to track customer-manager relationships
+    // Broadcast presence update so both participants listening can update UI
     io.emit("presence:update", presenceEvent);
   } else if (userType === "manager") {
-    // Notify all customers of this manager (or we can be more specific)
+    // Broadcast presence update so both participants listening can update UI
     io.emit("presence:update", presenceEvent);
   }
 };
@@ -78,6 +76,24 @@ const registerSocketHandlers = (io) => {
         if (!wasAlreadyOnline) {
           notifyPresenceChange(io, customerId, "customer", true);
         }
+      }
+    });
+
+    // Allow clients to query current presence synchronously
+    socket.on("presence:query", ({ managerId, customerId }, callback) => {
+      const result = {};
+      try {
+        if (managerId) {
+          const key = `manager:${managerId}`;
+          result.manager = Boolean(onlineUsers.has(key) && onlineUsers.get(key).size > 0);
+        }
+        if (customerId) {
+          const key = `customer:${customerId}`;
+          result.customer = Boolean(onlineUsers.has(key) && onlineUsers.get(key).size > 0);
+        }
+        if (callback) callback({ ok: true, ...result });
+      } catch (error) {
+        if (callback) callback({ ok: false, error: error.message });
       }
     });
 

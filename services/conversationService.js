@@ -87,7 +87,7 @@ const getConversationById = async (conversationId) => {
     throw Object.assign(new Error("Invalid conversation identifier."), { status: 400 });
   }
   const conversation = await Conversation.findById(conversationId)
-    .populate({ path: "manager", select: "managerName businessName mobileNumber" })
+    .populate({ path: "manager", select: "managerName businessName mobileNumber logo" })
     .populate({ path: "customer", select: "name phone email" })
     .lean();
   if (!conversation) {
