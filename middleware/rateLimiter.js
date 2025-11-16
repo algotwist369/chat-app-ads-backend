@@ -25,7 +25,7 @@ const authLimiter = rateLimit({
 // Message sending rate limiter - 30 messages per minute per user
 const messageLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 30, // Limit to 30 messages per minute
+  max: 300, // Allow up to 300 messages per minute
   message: "Too many messages sent, please slow down.",
   standardHeaders: true,
   legacyHeaders: false,
