@@ -5,7 +5,16 @@ const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
 const helmet = require("helmet");
-const compression = require("compression");
+let compression = null;
+try {
+  // Optional: compression, if installed
+  // Avoid crashing in environments where it's not installed yet
+  // Install with: npm install compression
+  // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+  compression = require("compression");
+} catch (err) {
+  console.warn("[server] compression module not found; gzip disabled. Install with `npm i compression`");
+}
 const { connectDatabase } = require("./config/database");
 const managerRoutes = require("./routes/managerRoutes");
 const customerRoutes = require("./routes/customerRoutes");
@@ -36,8 +45,10 @@ const helmetConfig = {
 };
 
 app.use(helmet(helmetConfig));
-// Gzip compression for responses
-app.use(compression());
+// Gzip compression for responses (if available)
+if (compression) {
+  app.use(compression());
+}
 app.use(cors(corsOptions));
 
 // Apply general rate limiting to all routes
