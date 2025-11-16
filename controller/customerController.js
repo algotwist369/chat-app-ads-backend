@@ -128,11 +128,20 @@ const customerJoin = asyncHandler(async (req, res) => {
             );
             
             if (welcomeMessage && io) {
-              const { serializeMessage } = require("../utils/serializers");
-              const serialized = serializeMessage(welcomeMessage);
-              io.to(`conversation:${conversation._id.toString()}`).emit("message:new", serialized);
-              io.to(`manager:${manager._id.toString()}`).emit("conversation:updated", serialized);
-              io.to(`customer:${customer._id.toString()}`).emit("conversation:updated", serialized);
+              const { serializeMessage, serializeConversation } = require("../utils/serializers");
+              const serializedMessage = serializeMessage(welcomeMessage);
+              io.to(`conversation:${conversation._id.toString()}`).emit("message:new", serializedMessage);
+
+              // Emit updated conversation snapshot to both participants
+              try {
+                const { getConversationById } = require("../services/conversationService");
+                const updatedConv = await getConversationById(conversation._id);
+                const convSerialized = serializeConversation(updatedConv, []);
+                io.to(`manager:${manager._id.toString()}`).emit("conversation:updated", convSerialized);
+                io.to(`customer:${customer._id.toString()}`).emit("conversation:updated", convSerialized);
+              } catch (e) {
+                console.error("Failed to emit updated conversation after welcome:", e);
+              }
             }
           } catch (error) {
             console.error("Failed to send welcome message:", error);

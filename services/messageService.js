@@ -89,8 +89,6 @@ const createMessage = async (payload) => {
     );
   }
 
-  const conversation = await getConversationById(conversationId);
-
   const authorModel = authorType === "manager" ? "Manager" : authorType === "customer" ? "Customer" : undefined;
 
   const normalizedAttachments = normalizeAttachmentInput(attachments);
@@ -101,8 +99,26 @@ const createMessage = async (payload) => {
     );
   }
 
+  if (!mongoose.Types.ObjectId.isValid(conversationId)) {
+    throw Object.assign(new Error("Invalid conversation identifier."), { status: 400 });
+  }
+
+  // Initialize delivery state at creation to avoid extra save
+  const initialDeliveryState =
+    authorType === "manager"
+      ? {
+          manager: { status: "read", updatedAt: new Date() },
+          customer: { status: "sent", updatedAt: null },
+        }
+      : authorType === "customer"
+        ? {
+            manager: { status: "sent", updatedAt: null },
+            customer: { status: "read", updatedAt: new Date() },
+          }
+        : undefined;
+
   const message = await Message.create({
-    conversation: conversation._id,
+    conversation: conversationId,
     authorType,
     author: authorId ?? undefined,
     authorModel,
@@ -110,26 +126,17 @@ const createMessage = async (payload) => {
     attachments: normalizedAttachments,
     status,
     replyTo: buildReplySnapshot(replyTo),
+    ...(initialDeliveryState ? { deliveryState: initialDeliveryState } : {}),
   });
 
-  if (authorType === "manager") {
-    message.deliveryState.manager.status = "read";
-    message.deliveryState.manager.updatedAt = new Date();
-    await message.save();
-  } else if (authorType === "customer") {
-    message.deliveryState.customer.status = "read";
-    message.deliveryState.customer.updatedAt = new Date();
-    await message.save();
-  }
-
   const firstViewer = authorType === "manager" ? "customer" : "manager";
-  await incrementUnreadForParticipant(conversation._id, firstViewer);
+  await incrementUnreadForParticipant(conversationId, firstViewer);
 
   const snippet = content?.trim()
     ? content.trim().slice(0, 160)
     : determineAttachmentSnippet(normalizedAttachments);
 
-  await updateLastMessageSnapshot(conversation._id, {
+  await updateLastMessageSnapshot(conversationId, {
     snippet,
     timestamp: message.createdAt,
   });

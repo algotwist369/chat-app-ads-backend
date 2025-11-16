@@ -59,7 +59,7 @@ const CustomerSchema = new Schema(
   },
 );
 
-CustomerSchema.index({ manager: 1, phone: 1 }, { unique: false });
+CustomerSchema.index({ manager: 1, phone: 1 }, { unique: true });
 CustomerSchema.index({ manager: 1, email: 1 }, { sparse: true });
 
 module.exports = mongoose.models.Customer || mongoose.model("Customer", CustomerSchema);

@@ -127,7 +127,7 @@ const registerSocketHandlers = (io) => {
         if (payload.authorType === "customer" && serialized.conversationId) {
           const { processCustomerMessage } = require("../services/autoChatService");
           const { Conversation } = require("../models");
-          const conversation = await Conversation.findById(serialized.conversationId);
+          const conversation = await Conversation.findById(serialized.conversationId).select("autoChatEnabled manager customer");
           
           if (conversation && conversation.autoChatEnabled) {
             // Process auto-response asynchronously

@@ -9,11 +9,11 @@ const {
   markConversationDelivered,
   markConversationRead,
   ensureManagerExists,
-  ensureCustomerExists,
   setConversationMuteState,
 } = require("../services/conversationService");
 const { serializeConversation } = require("../utils/serializers");
 const { Message } = require("../models");
+const { Conversation } = require("../models");
 const {
   getCache,
   setCache,
@@ -98,9 +98,7 @@ const getConversation = asyncHandler(async (req, res) => {
   if (cached) {
     res.set("X-Cache", "HIT");
     res.set("Cache-Control", "private, max-age=20");
-    res.json({
-      conversation: cached,
-    });
+    res.json(cached);
     return;
   }
 
@@ -116,23 +114,28 @@ const getConversation = asyncHandler(async (req, res) => {
   const sortedMessages = messages.reverse();
   const payload = serializeConversation(conversation, sortedMessages);
 
-  await setCache(cacheKey, payload, 20 * 1000);
-  res.set("X-Cache", "MISS");
-  res.set("Cache-Control", "private, max-age=20");
-  res.json({
+  const responsePayload = {
     conversation: payload,
     pagination: {
       limit,
       skip,
       hasMore: messages.length === limit,
     },
-  });
+  };
+
+  await setCache(cacheKey, responsePayload, 20 * 1000);
+  res.set("X-Cache", "MISS");
+  res.set("Cache-Control", "private, max-age=20");
+  res.json(responsePayload);
 });
 
 const ensureConversationHandler = asyncHandler(async (req, res) => {
   handleValidation(req);
   const { managerId, customerId } = req.body;
   const limit = Math.min(parseInt(req.query.limit) || 100, 200);
+
+  // Detect if conversation exists prior to ensuring (to decide welcome flow)
+  const existing = await Conversation.findOne({ manager: managerId, customer: customerId }).select("_id").lean();
   const conversationRecord = await ensureConversation(managerId, customerId, req.body.metadata ?? {});
   const conversation = await getConversationById(conversationRecord._id);
   const messages = await Message.find({ conversation: conversation._id })
@@ -141,8 +144,62 @@ const ensureConversationHandler = asyncHandler(async (req, res) => {
     .lean();
   const sortedMessages = messages.reverse();
   await invalidateConversationCaches(conversation._id.toString(), managerId, customerId);
+
+  const serializedConv = serializeConversation(conversation, sortedMessages);
+
+  // Emit socket updates so both participants receive fresh state
+  const io = req.app.get("io");
+  if (io) {
+    io.to(`conversation:${conversation._id.toString()}`).emit("conversation:updated", serializedConv);
+    io.to(`manager:${conversation.manager?._id?.toString?.() ?? conversation.manager?.toString?.()}`).emit(
+      "conversation:updated",
+      serializedConv,
+    );
+    io.to(`customer:${conversation.customer?._id?.toString?.() ?? conversation.customer?.toString?.()}`).emit(
+      "conversation:updated",
+      serializedConv,
+    );
+  }
+
+  // Trigger welcome message for truly new conversations (mirrors customerJoin)
+  if (!existing && io) {
+    try {
+      const { sendWelcomeMessage } = require("../services/autoChatService");
+      const managerName =
+        conversation?.manager?.managerName ?? conversation?.manager?.businessName ?? "Manager";
+      const customerName = conversation?.customer?.name ?? "Customer";
+      const managerBusinessName = conversation?.manager?.businessName ?? "Our Spa";
+
+      setImmediate(async () => {
+        try {
+          const welcomeMessage = await sendWelcomeMessage(
+            conversation._id,
+            conversation.manager?._id ?? conversation.manager,
+            managerName,
+            customerName,
+            managerBusinessName,
+          );
+          if (welcomeMessage && io) {
+            const { serializeMessage, serializeConversation } = require("../utils/serializers");
+            const serializedMessage = serializeMessage(welcomeMessage);
+            io.to(`conversation:${conversation._id.toString()}`).emit("message:new", serializedMessage);
+
+            const updatedConv = await getConversationById(conversation._id);
+            const convSerialized = serializeConversation(updatedConv, []);
+            io.to(`manager:${updatedConv.manager}`).emit("conversation:updated", convSerialized);
+            io.to(`customer:${updatedConv.customer}`).emit("conversation:updated", convSerialized);
+          }
+        } catch (e) {
+          console.error("Failed to send welcome message (ensure):", e);
+        }
+      });
+    } catch (e) {
+      console.error("Failed to schedule welcome message (ensure):", e);
+    }
+  }
+
   res.status(201).json({
-    conversation: serializeConversation(conversation, sortedMessages),
+    conversation: serializedConv,
   });
 });
 
@@ -161,7 +218,7 @@ const getCustomerConversationHandler = asyncHandler(async (req, res) => {
   if (cached) {
     res.set("X-Cache", "HIT");
     res.set("Cache-Control", "private, max-age=30");
-    res.json({ conversation: cached });
+    res.json(cached);
     return;
   }
 
@@ -172,17 +229,18 @@ const getCustomerConversationHandler = asyncHandler(async (req, res) => {
     .lean();
   const sortedMessages = messages.reverse();
   const payload = serializeConversation(conversation, sortedMessages);
-  await setCache(cacheKey, payload, 30 * 1000);
-  res.set("X-Cache", "MISS");
-  res.set("Cache-Control", "private, max-age=30");
-  res.json({
+  const responsePayload = {
     conversation: payload,
     pagination: {
       limit,
       skip,
       hasMore: messages.length === limit,
     },
-  });
+  };
+  await setCache(cacheKey, responsePayload, 30 * 1000);
+  res.set("X-Cache", "MISS");
+  res.set("Cache-Control", "private, max-age=30");
+  res.json(responsePayload);
 });
 
 const markDeliveredHandler = asyncHandler(async (req, res) => {
@@ -191,6 +249,16 @@ const markDeliveredHandler = asyncHandler(async (req, res) => {
   const { viewerType } = req.body;
   const conversation = await markConversationDelivered(conversationId, viewerType);
   await invalidateConversationCaches(conversationId, conversation.manager?.toString(), conversation.customer?.toString());
+
+  // Emit delivery status event for HTTP parity with socket handler
+  const io = req.app.get("io");
+  if (io) {
+    const payload = { conversationId: conversation._id.toString(), viewerType };
+    io.to(`conversation:${payload.conversationId}`).emit("conversation:delivered", payload);
+    io.to(`manager:${conversation.manager}`).emit("conversation:delivered", payload);
+    io.to(`customer:${conversation.customer}`).emit("conversation:delivered", payload);
+  }
+
   res.json({ conversationId: conversation._id.toString(), viewerType });
 });
 
@@ -200,6 +268,16 @@ const markReadHandler = asyncHandler(async (req, res) => {
   const { viewerType } = req.body;
   const conversation = await markConversationRead(conversationId, viewerType);
   await invalidateConversationCaches(conversationId, conversation.manager?.toString(), conversation.customer?.toString());
+
+  // Emit read status event for HTTP parity with socket handler
+  const io = req.app.get("io");
+  if (io) {
+    const payload = { conversationId: conversation._id.toString(), viewerType };
+    io.to(`conversation:${payload.conversationId}`).emit("conversation:read", payload);
+    io.to(`manager:${conversation.manager}`).emit("conversation:read", payload);
+    io.to(`customer:${conversation.customer}`).emit("conversation:read", payload);
+  }
+
   res.json({ conversationId: conversation._id.toString(), viewerType });
 });
 
@@ -215,8 +293,32 @@ const setConversationMuteHandler = asyncHandler(async (req, res) => {
     .lean();
   const sortedMessages = messages.reverse();
   await invalidateConversationCaches(conversationId, conversation.manager?.toString(), conversation.customer?.toString());
+
+  const serialized = serializeConversation(conversation, sortedMessages);
+
+  // Emit mute updates to all relevant rooms
+  const io = req.app.get("io");
+  if (io) {
+    const payload = {
+      conversation: serialized,
+      actorType,
+      muted: serialized.mutedBy?.[actorType] ?? Boolean(muted),
+    };
+    io.to(`conversation:${serialized.id}`).emit("conversation:muted", payload);
+    io.to(`manager:${serialized.managerId}`).emit("conversation:muted", {
+      conversation: serialized,
+      actorType,
+      muted: serialized.mutedBy?.manager ?? false,
+    });
+    io.to(`customer:${serialized.customerId}`).emit("conversation:muted", {
+      conversation: serialized,
+      actorType,
+      muted: serialized.mutedBy?.customer ?? false,
+    });
+  }
+
   res.json({
-    conversation: serializeConversation(conversation, sortedMessages),
+    conversation: serialized,
   });
 });
 
@@ -242,6 +344,8 @@ const disableAutoChatHandler = asyncHandler(async (req, res) => {
     const { serializeConversation } = require("../utils/serializers");
     const serialized = serializeConversation(conversation, sortedMessages);
     io.to(`conversation:${conversationId}`).emit("conversation:updated", serialized);
+    io.to(`manager:${conversation.manager?.toString()}`).emit("conversation:updated", serialized);
+    io.to(`customer:${conversation.customer?.toString()}`).emit("conversation:updated", serialized);
   }
   res.json({
     conversation: serializeConversation(conversation, sortedMessages),
