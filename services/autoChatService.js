@@ -369,7 +369,7 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
     const customResponse = autoReplyConfig?.responses?.servicesPricing;
     const topServices = services.slice(0, SERVICE_CHUNK_SIZE);
     const hasMoreServices = services.length > SERVICE_CHUNK_SIZE;
-    const topServiceList = topServices.map((service) => `• ${service.name} — ${service.description}`).join("\n");
+    const topServiceList = topServices.map((service) => `• ${service.name} - ${service.description}`).join("\n");
     const displayServiceList =
       topServiceList +
       (hasMoreServices ? "\n\n…for more treatments/services, click *More Treatments*." : "");
@@ -438,7 +438,7 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
       };
     }
 
-    const remainingList = remainingServices.map((service) => `• ${service.name} — ${service.description}`).join("\n");
+    const remainingList = remainingServices.map((service) => `• ${service.name} - ${service.description}`).join("\n");
     const nextOffset = currentOffset + remainingServices.length;
     const hasMore = services.length > nextOffset;
 
