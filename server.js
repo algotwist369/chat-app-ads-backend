@@ -27,6 +27,7 @@ const { initializeSocket } = require("./utils/socket");
 const { UPLOAD_DIR, UPLOAD_PUBLIC_PATH } = require("./config/storage");
 const { buildCorsOptions, resolveAllowedOrigins } = require("./config/cors");
 const { apiLimiter, messageLimiter, uploadLimiter } = require("./middleware/rateLimiter");
+const { optionalAuthenticate } = require("./middleware/auth");
 
 const PORT = process.env.PORT || 4000;
 
@@ -93,7 +94,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/managers", managerRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/conversations", conversationRoutes);
-app.use("/api/messages", messageLimiter, messageRoutes); // Apply message rate limiting
+app.use("/api/messages", optionalAuthenticate, messageLimiter, messageRoutes); // Apply optional auth then message rate limiting
 app.use("/api/auto-replies", autoReplyRoutes);
 
 app.use((req, res, next) => {

@@ -22,16 +22,27 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Message sending rate limiter - configurable per minute per user
+// Message sending rate limiter - per user with reasonable limits for chat conversations
 const messageLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: Number(process.env.MESSAGE_RATE_PER_MIN || 8000), // Allow up to N messages per minute
+  windowMs: 5 * 60 * 1000, // 5 minutes (more reasonable window for chat)
+  max: Number(process.env.MESSAGE_RATE_PER_WINDOW || 1000), // Allow up to 1000 messages per 5 minutes per user
   message: "Too many messages sent, please slow down.",
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    // Use authorId if available, otherwise fall back to IP
-    return req.body?.authorId || req.ip;
+    // Priority: authenticated userId > authorId from body > IP
+    // This ensures each user has their own rate limit, not shared by IP
+    if (req.userId) {
+      return `user:${req.userId}`;
+    }
+    if (req.body?.authorId) {
+      return `author:${req.body.authorId}`;
+    }
+    return `ip:${req.ip}`;
+  },
+  skip: (req) => {
+    // Skip rate limiting for system messages
+    return req.body?.authorType === "system";
   },
 });
 
