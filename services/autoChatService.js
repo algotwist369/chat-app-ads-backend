@@ -6,30 +6,109 @@ const MAX_AUTO_CHAT_MESSAGES = 10;
 
 // Default services (fallback if manager hasn't configured)
 const DEFAULT_SERVICES = [
+  { name: "Head Massage", description: "60 min | ₹1,999", action: "service_head_massage" },
+  { name: "Foot Reflexology", description: "60 min | ₹1,999", action: "service_foot_reflexology" },
+  { name: "Back Massage", description: "60 min | ₹1,999", action: "service_back_massage" },
+  { name: "Full Body Dry Massage", description: "60 min | ₹1,999", action: "service_full_body_dry" },
   {
-    name: "Signature Relaxation Massage",
-    description: "60 min | ₹99",
-    action: "service_signature_relaxation",
+    name: "Full Body Oil Massage",
+    description: "60 min | ₹1,999 · 90 min | ₹2,999",
+    action: "service_full_body_oil",
+  },
+  {
+    name: "Full Body Oil Massage + Jacuzzi",
+    description: "60 min | ₹3,999 · 90 min | ₹4,999 · 120 min | ₹5,999",
+    action: "service_full_body_oil_jacuzzi",
+  },
+  {
+    name: "Four Hand Couple Special",
+    description: "60 min | ₹3,999 · 90 min | ₹5,999 · 120 min | ₹7,999",
+    action: "service_four_hand_couple_special",
+  },
+  {
+    name: "Four Hand Couple + Jacuzzi",
+    description: "60 min | ₹5,999 · 90 min | ₹7,999 · 120 min | ₹9,999",
+    action: "service_four_hand_couple_jacuzzi",
+  },
+  {
+    name: "Full Body Massage + Scrub",
+    description: "60 min | ₹2,499 · 90 min | ₹3,499",
+    action: "service_body_scrub",
+  },
+  {
+    name: "Full Body Massage + Scrub + Jacuzzi",
+    description: "60 min | ₹4,499 · 90 min | ₹5,499 · 120 min | ₹7,499",
+    action: "service_body_scrub_jacuzzi",
+  },
+  {
+    name: "Full Body Thai Massage",
+    description: "60 min | ₹2,499 · 90 min | ₹3,499 · 120 min | ₹4,499",
+    action: "service_thai",
+  },
+  {
+    name: "Full Body Thai Massage + Jacuzzi",
+    description: "60 min | ₹3,999 · 90 min | ₹4,999 · 120 min | ₹5,999",
+    action: "service_thai_jacuzzi",
+  },
+  {
+    name: "Full Body Thai Massage + Scrub",
+    description: "60 min | ₹2,999 · 90 min | ₹3,999 · 120 min | ₹4,999",
+    action: "service_thai_scrub",
+  },
+  {
+    name: "Full Body Thai Massage + Scrub + Jacuzzi",
+    description: "60 min | ₹4,499 · 90 min | ₹5,499 · 120 min | ₹6,499",
+    action: "service_thai_scrub_jacuzzi",
+  },
+  {
+    name: "Four Hand Massage",
+    description: "60 min | ₹3,499 · 90 min | ₹4,999 · 120 min | ₹6,499",
+    action: "service_four_hand",
+  },
+  {
+    name: "Four Hand Massage + Jacuzzi",
+    description: "60 min | ₹4,999 · 90 min | ₹6,499 · 120 min | ₹7,999",
+    action: "service_four_hand_jacuzzi",
+  },
+  {
+    name: "Four Hand Massage + Scrub",
+    description: "60 min | ₹4,499 · 90 min | ₹5,999 · 120 min | ₹7,499",
+    action: "service_four_hand_scrub",
+  },
+  {
+    name: "Four Hand Massage + Scrub + Jacuzzi",
+    description: "60 min | ₹5,999 · 90 min | ₹7,499 · 120 min | ₹8,999",
+    action: "service_four_hand_scrub_jacuzzi",
+  },
+  {
+    name: "French Aroma Massage",
+    description: "60 min | ₹1,999 · 90 min | ₹2,999 · 120 min | ₹3,999",
+    action: "service_french_aroma",
+  },
+  {
+    name: "Swedish Massage",
+    description: "60 min | ₹1,999 · 90 min | ₹2,999 · 120 min | ₹3,999",
+    action: "service_swedish",
+  },
+  {
+    name: "Balinese Massage",
+    description: "60 min | ₹2,499 · 90 min | ₹3,499 · 120 min | ₹4,499",
+    action: "service_balinese",
   },
   {
     name: "Deep Tissue Massage",
-    description: "90 min | ₹129",
+    description: "60 min | ₹2,799 · 90 min | ₹3,799 · 120 min | ₹4,799",
     action: "service_deep_tissue",
   },
   {
-    name: "Radiance Facial",
-    description: "75 min | ₹119",
-    action: "service_radiance_facial",
+    name: "Lomi Lomi Massage",
+    description: "60 min | ₹2,499 · 90 min | ₹3,499 · 120 min | ₹4,499",
+    action: "service_lomi_lomi",
   },
   {
-    name: "Glow Body Polish",
-    description: "60 min | ₹109",
-    action: "service_glow_body_polish",
-  },
-  {
-    name: "Couples Retreat",
-    description: "90 min | ₹249",
-    action: "service_couples_retreat",
+    name: "Heritage Ladies Special",
+    description: "60 min | ₹3,499 · 90 min | ₹4,499",
+    action: "service_heritage_ladies",
   },
 ];
 
@@ -40,6 +119,8 @@ const DEFAULT_TIME_SLOTS = [
   { label: "2:00 PM – 4:00 PM", action: "slot_afternoon" },
   { label: "4:00 PM – 6:00 PM", action: "slot_evening" },
 ];
+
+const SERVICE_CHUNK_SIZE = 5;
 
 // Cache for auto-reply configs (5 minute TTL)
 const autoReplyConfigCache = new Map();
@@ -178,12 +259,12 @@ const getWelcomeMessage = async (_managerName, customerName, managerBusinessName
 
   // Default welcome message
   return {
-    content: `Hello ${customerName}! 👋\n\nA warm welcome to ${managerBusinessName || "Our Spa"}. We can't wait to pamper you! 🌸\n\nFirst visit? Enjoy **10% off** or a **FREE 15-min neck massage** with any paid service-just tap *Claim Welcome Offer* to get started.\n\n📍 Location: ${locationLink}\n☎️ Need help right away? Tap *Call the Spa* and our team will jump in.\n\nHow can I make your day more relaxing?`,
+    content: `Welcome, ${customerName || "Guest"}! 🌿\n\nYou’ve reached ${managerBusinessName || "Our Spa"}, where every visit is personalised and unrushed. If it’s your first time with us, you’re entitled to **10% off** or a **complimentary 15-minute neck ritual** with any full treatment.\n\nTap *Explore Bookings* to browse curated massages, or choose a quick option below and I’ll stay with you until everything is confirmed.`,
     quickReplies: [
-      { text: "Claim Offer", action: "claim_offer" },
+      { text: "Book Now", action: "book_now" },
       { text: "Services & Pricing", action: "services_pricing" },
-      { text: "Book an Appointment", action: "book_now" },
-      { text: "Call the Spa", action: "call_spa" },
+      { text: "Complimentary Offer", action: "claim_offer" },
+      { text: "Call Concierge", action: "call_spa" },
     ],
   };
 };
@@ -199,6 +280,7 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
   const timeSlots = autoReplyConfig?.timeSlots && autoReplyConfig.timeSlots.length > 0
     ? autoReplyConfig.timeSlots
     : DEFAULT_TIME_SLOTS;
+  const bookingState = conversation ? getBookingState(conversation) : null;
 
   // Check if customer wants to talk with manager
   if (
@@ -247,8 +329,8 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
                 text: service.name,
                 action: service.action,
               })),
-              { text: "See All Services", action: "services_pricing" },
-              { text: "Call the Spa", action: "call_spa" },
+              { text: "View Treatments", action: "services_pricing" },
+              { text: "Call Concierge", action: "call_spa" },
             ],
         bookingData: { offerClaimed: true },
       };
@@ -269,8 +351,8 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
           text: service.name,
           action: service.action,
         })),
-        { text: "See All Services", action: "services_pricing" },
-        { text: "Call the Spa", action: "call_spa" },
+        { text: "View Treatments", action: "services_pricing" },
+        { text: "Call Concierge", action: "call_spa" },
       ],
       bookingData: { offerClaimed: true },
     };
@@ -285,41 +367,101 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
     lowerMessage.includes("pricing")
   ) {
     const customResponse = autoReplyConfig?.responses?.servicesPricing;
+    const topServices = services.slice(0, SERVICE_CHUNK_SIZE);
+    const hasMoreServices = services.length > SERVICE_CHUNK_SIZE;
+    const topServiceList = topServices.map((service) => `• ${service.name} — ${service.description}`).join("\n");
+    const displayServiceList =
+      topServiceList +
+      (hasMoreServices ? "\n\n…plus additional bespoke treatments on request." : "");
+    const nextOffset = hasMoreServices ? SERVICE_CHUNK_SIZE : services.length;
+    const bookingDataUpdate = {
+      ...(bookingState || {}),
+      serviceBrowseOffset: nextOffset,
+      servicesFullyBrowsed: !hasMoreServices,
+    };
+
     if (customResponse?.content) {
-      const allServices = services.map((service) => `• ${service.name} — ${service.description}`).join("\n");
-      let content = customResponse.content.replace(/\{serviceList\}/g, allServices);
+      let content = customResponse.content.replace(/\{serviceList\}/g, displayServiceList);
       
       return {
         content,
         quickReplies: customResponse.quickReplies.length > 0
           ? customResponse.quickReplies
           : [
-              ...services.slice(0, 3).map((service) => ({
+              ...topServices.slice(0, 3).map((service) => ({
                 text: service.name,
                 action: service.action,
               })),
-              { text: "Book an Appointment", action: "book_now" },
-              { text: "Claim Welcome Offer", action: "claim_offer" },
+              { text: "Reserve a Slot", action: "book_now" },
+              { text: "Complimentary Offer", action: "claim_offer" },
+              ...(hasMoreServices ? [{ text: "More Treatments", action: "services_more" }] : []),
             ],
+        bookingData: bookingDataUpdate,
       };
     }
 
     // Default response
-    const allServices = services.map((service) => `• ${service.name} — ${service.description}`).join("\n");
-
     return {
       content:
-        "🌿 **Spa Services & Pricing**\n\n" +
-        allServices +
-        "\n\n✨ **Each visit includes:**\n• Welcome tea ritual\n• Aromatherapy bar\n• Relaxation lounge access\n\nWould you like to book a session?",
+        "Here’s a curated look at our signature rituals:\n\n" +
+        displayServiceList +
+        "\n\nEvery visit includes a welcome elixir, aromatherapy lounge access, and a personalised wellness consult. Would you like me to reserve a time?",
       quickReplies: [
-        ...services.slice(0, 3).map((service) => ({
+        ...topServices.slice(0, 3).map((service) => ({
           text: service.name,
           action: service.action,
         })),
-        { text: "Book an Appointment", action: "book_now" },
-        { text: "Claim Welcome Offer", action: "claim_offer" },
+        { text: "Reserve a Slot", action: "book_now" },
+        { text: "Complimentary Offer", action: "claim_offer" },
+        ...(hasMoreServices ? [{ text: "More Treatments", action: "services_more" }] : []),
       ],
+      bookingData: bookingDataUpdate,
+    };
+  }
+
+  if (action === "services_more") {
+    const currentOffset = bookingState?.serviceBrowseOffset ?? SERVICE_CHUNK_SIZE;
+    const remainingServices = services.slice(currentOffset, currentOffset + SERVICE_CHUNK_SIZE);
+    if (remainingServices.length === 0) {
+      return {
+        content: "You’ve already viewed the full menu. I’d be happy to recommend something if you tell me the mood you’re in.",
+        quickReplies: [
+          { text: "Reserve a Slot", action: "book_now" },
+          { text: "Complimentary Offer", action: "claim_offer" },
+          { text: "Call Concierge", action: "call_spa" },
+        ],
+        bookingData: {
+          ...(bookingState || {}),
+          servicesFullyBrowsed: true,
+          serviceBrowseOffset: services.length,
+        },
+      };
+    }
+
+    const remainingList = remainingServices.map((service) => `• ${service.name} — ${service.description}`).join("\n");
+    const nextOffset = currentOffset + remainingServices.length;
+    const hasMore = services.length > nextOffset;
+
+    return {
+      content:
+        "Here are additional treatments our guests love:\n\n" +
+        remainingList +
+        "\n\nTell me which one interests you and I’ll line up the best time.",
+      quickReplies: [
+        ...remainingServices.slice(0, 3).map((service) => ({
+          text: service.name,
+          action: service.action,
+        })),
+        { text: "Reserve a Slot", action: "book_now" },
+        { text: "Complimentary Offer", action: "claim_offer" },
+        { text: "Call Concierge", action: "call_spa" },
+        ...(hasMore ? [{ text: "More Treatments", action: "services_more" }] : []),
+      ],
+      bookingData: {
+        ...(bookingState || {}),
+        serviceBrowseOffset: nextOffset,
+        servicesFullyBrowsed: !hasMore,
+      },
     };
   }
 
@@ -341,24 +483,24 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
                 text: service.name,
                 action: service.action,
               })),
-              { text: "See All Services", action: "services_pricing" },
-              { text: "Call the Spa", action: "call_spa" },
-              { text: "View Location", action: "spa_location" },
+              { text: "View More Services", action: "services_pricing" },
+              { text: "Call Concierge", action: "call_spa" },
+              { text: "Visit Us", action: "spa_location" },
             ],
       };
     }
 
     return {
       content:
-        "Perfect! Let's secure your pampering session. 💆‍♀️✨\n\nPlease pick the service you'd love to enjoy, and I'll share the best time slots.",
+        "Lovely. Tell me which ritual you’re in the mood for and I’ll hold the calmest slot for you.",
       quickReplies: [
         ...services.slice(0, 3).map((service) => ({
           text: service.name,
           action: service.action,
         })),
-        { text: "See All Services", action: "services_pricing" },
-        { text: "Call the Spa", action: "call_spa" },
-        { text: "View Location", action: "spa_location" },
+        { text: "View More Services", action: "services_pricing" },
+        { text: "Call Concierge", action: "call_spa" },
+        { text: "Visit Us", action: "spa_location" },
       ],
     };
   }
@@ -371,7 +513,6 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
   );
 
   if (selectedService) {
-    const bookingState = conversation ? getBookingState(conversation) : null;
     const customResponse = autoReplyConfig?.responses?.serviceSelected;
     
     if (customResponse?.content) {
@@ -424,7 +565,6 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
   );
 
   if (selectedSlot) {
-    const bookingState = conversation ? getBookingState(conversation) : null;
     const serviceName = bookingState?.service || "Your selected treatment";
     const serviceDesc = bookingState?.serviceDescription || "";
     const businessName = managerDetails?.businessName || "Our Spa";
