@@ -94,7 +94,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/managers", managerRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/conversations", conversationRoutes);
-app.use("/api/messages", optionalAuthenticate, messageLimiter, messageRoutes); // Apply optional auth then message rate limiting
+app.use("/api/messages", optionalAuthenticate, messageRoutes); // No rate limiting for messages - completely disabled
 app.use("/api/auto-replies", autoReplyRoutes);
 
 app.use((req, res, next) => {
