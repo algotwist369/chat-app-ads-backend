@@ -94,19 +94,45 @@ const sendMessage = asyncHandler(async (req, res) => {
         processCustomerMessage(serialized.conversationId, payload.content, payload.action)
           .then((autoResponse) => {
             if (autoResponse && io) {
-              const autoSerialized = serializeMessage(autoResponse);
-              io.to(`conversation:${serialized.conversationId}`).emit("message:new", autoSerialized);
-              
-              // Update conversation
-              const { getConversationById } = require("../services/conversationService");
-              const { serializeConversation } = require("../utils/serializers");
-              getConversationById(serialized.conversationId)
-                .then((updatedConv) => {
-                  const convSerialized = serializeConversation(updatedConv, []);
-                  io.to(`manager:${updatedConv.manager}`).emit("conversation:updated", convSerialized);
-                  io.to(`customer:${updatedConv.customer}`).emit("conversation:updated", convSerialized);
-                })
-                .catch((err) => console.error("Failed to update conversation:", err));
+              // Handle case where 10th reply returns both messages
+              if (autoResponse.isTenthReply && autoResponse.secondary && autoResponse.primary) {
+                // Send the 10th regular reply first
+                const secondarySerialized = serializeMessage(autoResponse.secondary);
+                io.to(`conversation:${serialized.conversationId}`).emit("message:new", secondarySerialized);
+                
+                // Small delay to ensure messages appear in correct order
+                setTimeout(() => {
+                  // Then send the connection message
+                  const primarySerialized = serializeMessage(autoResponse.primary);
+                  io.to(`conversation:${serialized.conversationId}`).emit("message:new", primarySerialized);
+                  
+                  // Update conversation after both messages are sent
+                  const { getConversationById } = require("../services/conversationService");
+                  const { serializeConversation } = require("../utils/serializers");
+                  getConversationById(serialized.conversationId)
+                    .then((updatedConv) => {
+                      const convSerialized = serializeConversation(updatedConv, []);
+                      io.to(`manager:${updatedConv.manager}`).emit("conversation:updated", convSerialized);
+                      io.to(`customer:${updatedConv.customer}`).emit("conversation:updated", convSerialized);
+                    })
+                    .catch((err) => console.error("Failed to update conversation:", err));
+                }, 100);
+              } else {
+                // Normal case - single auto-response
+                const autoSerialized = serializeMessage(autoResponse);
+                io.to(`conversation:${serialized.conversationId}`).emit("message:new", autoSerialized);
+                
+                // Update conversation
+                const { getConversationById } = require("../services/conversationService");
+                const { serializeConversation } = require("../utils/serializers");
+                getConversationById(serialized.conversationId)
+                  .then((updatedConv) => {
+                    const convSerialized = serializeConversation(updatedConv, []);
+                    io.to(`manager:${updatedConv.manager}`).emit("conversation:updated", convSerialized);
+                    io.to(`customer:${updatedConv.customer}`).emit("conversation:updated", convSerialized);
+                  })
+                  .catch((err) => console.error("Failed to update conversation:", err));
+              }
             }
           })
           .catch((error) => {
