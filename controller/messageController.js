@@ -94,16 +94,18 @@ const sendMessage = asyncHandler(async (req, res) => {
         processCustomerMessage(serialized.conversationId, payload.content, payload.action)
           .then((autoResponse) => {
             if (autoResponse && io) {
-              // Handle case where 10th reply returns both messages
+              // Handle case where last auto-reply returns both messages (quota reached)
               if (autoResponse.isTenthReply && autoResponse.secondary && autoResponse.primary) {
-                // Send the 10th regular reply first
+                // Send the last regular auto-reply first
                 const secondarySerialized = serializeMessage(autoResponse.secondary);
+                console.log("[MessageController] Emitting last auto-reply message:", secondarySerialized.id, "to conversation:", serialized.conversationId);
                 io.to(`conversation:${serialized.conversationId}`).emit("message:new", secondarySerialized);
                 
                 // Small delay to ensure messages appear in correct order
                 setTimeout(() => {
-                  // Then send the connection message
+                  // Then send the quota reached message
                   const primarySerialized = serializeMessage(autoResponse.primary);
+                  console.log("[MessageController] Emitting quota reached message:", primarySerialized.id, "to conversation:", serialized.conversationId);
                   io.to(`conversation:${serialized.conversationId}`).emit("message:new", primarySerialized);
                   
                   // Update conversation after both messages are sent
@@ -118,8 +120,15 @@ const sendMessage = asyncHandler(async (req, res) => {
                     .catch((err) => console.error("Failed to update conversation:", err));
                 }, 100);
               } else {
-                // Normal case - single auto-response
+                // Normal case - single auto-response (includes quota message when already at limit)
                 const autoSerialized = serializeMessage(autoResponse);
+                const isQuotaMessage = autoSerialized.content?.includes("You have reached your auto reply quota");
+                if (isQuotaMessage) {
+                  console.log("[MessageController] ✅ Emitting QUOTA MESSAGE:", autoSerialized.id, "to conversation:", serialized.conversationId);
+                  console.log("[MessageController] Quota message full content:", autoSerialized.content);
+                } else {
+                  console.log("[MessageController] Emitting auto-response message:", autoSerialized.id, "to conversation:", serialized.conversationId, "content preview:", autoSerialized.content?.substring(0, 50));
+                }
                 io.to(`conversation:${serialized.conversationId}`).emit("message:new", autoSerialized);
                 
                 // Update conversation

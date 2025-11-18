@@ -2,7 +2,7 @@ const { Message, Conversation, Manager, AutoReply } = require("../models");
 const { createMessage } = require("./messageService");
 const { getConversationById } = require("./conversationService");
 
-const MAX_AUTO_CHAT_MESSAGES = 15;
+const MAX_AUTO_CHAT_MESSAGES = 5;
 
 // Default services (fallback if manager hasn't configured)
 const DEFAULT_SERVICES = [
@@ -916,40 +916,55 @@ const processCustomerMessage = async (conversationId, customerMessage, action = 
 
     // Check if we've reached max messages
     if (conversation.autoChatMessageCount >= MAX_AUTO_CHAT_MESSAGES) {
-      // Check if we've already sent the "talk with manager" message (optimized query)
+      console.log("[AutoChat] Quota reached! Current count:", conversation.autoChatMessageCount, "for conversation:", conversationId);
+      
+      // Check if we've already sent the quota message (optimized query - check more messages to be sure)
       const recentManagerMessages = await Message.find({
         conversation: conversationId,
         authorType: "manager",
       })
         .sort({ createdAt: -1 })
-        .limit(3)
-        .select("content")
+        .limit(10) // Increased from 3 to 10 to catch quota messages
+        .select("content createdAt")
         .lean();
 
-      const talkWithManagerSent = recentManagerMessages.some(
-        (msg) =>
-          msg.content &&
-          (msg.content.includes("We are connecting you with our manager") ||
-            msg.content.includes("You can call directly") ||
-            msg.content.includes("Would you like to speak directly with our manager")),
+      console.log("[AutoChat] Found", recentManagerMessages.length, "recent manager messages");
+
+      const quotaMessageSent = recentManagerMessages.some(
+        (msg) => {
+          if (!msg.content) return false;
+          const hasQuotaText = msg.content.includes("You have reached your auto reply quota") ||
+                               msg.content.includes("auto reply quota");
+          if (hasQuotaText) {
+            console.log("[AutoChat] Found existing quota message:", msg._id, "created at:", msg.createdAt);
+          }
+          return hasQuotaText;
+        }
       );
 
+      console.log("[AutoChat] Quota message already sent:", quotaMessageSent);
+
       // If we haven't sent it yet, send it once
-      if (!talkWithManagerSent) {
+      if (!quotaMessageSent) {
+        console.log("[AutoChat] Sending quota message now...");
         const phone = managerDetails?.phone || "+91 9125846358";
         const businessName = managerDetails?.businessName || "Our Spa";
         
-        // Disable auto-chat after 10 messages
+        // Disable auto-chat after max messages
         await Conversation.findByIdAndUpdate(conversationId, { autoChatEnabled: false });
+        console.log("[AutoChat] Disabled auto-chat for conversation:", conversationId);
 
-        const talkWithManagerReply = { text: "Talk with Manager", action: "talk_with_manager" };
+        const talkWithManagerReply = { text: "Chat with Manager", action: "talk_with_manager" };
         const callDirectlyReply = { text: "Call Directly", action: "call_spa" };
         const quickRepliesJson = JSON.stringify([talkWithManagerReply, callDirectlyReply]);
         
         const connectMessageContent =
-          `Thank you for your patience! We are connecting you with our manager at ${businessName}. They will respond shortly.\n\n` +
-          `In the meantime, you can call us directly at: ${phone}\n\n` +
-          `Please allow a few moments for our manager to join the conversation.\n<!-- QUICK_REPLIES:${quickRepliesJson} -->`;
+          `You have reached your auto reply quota. Now you can chat with our manager or call directly.\n\n` +
+          `Call us directly at: ${phone}\n\n` +
+          `Our manager at ${businessName} will respond to your messages soon.\n<!-- QUICK_REPLIES:${quickRepliesJson} -->`;
+
+        console.log("[AutoChat] Quota message content with quick replies:", connectMessageContent);
+        console.log("[AutoChat] Quick replies JSON:", quickRepliesJson);
 
         const connectMessage = await createMessage({
           conversationId: conversationId.toString(),
@@ -958,10 +973,14 @@ const processCustomerMessage = async (conversationId, customerMessage, action = 
           content: connectMessageContent,
         });
 
+        console.log("[AutoChat] ✅ Sent quota reached message:", connectMessage._id, "for conversation:", conversationId);
+        console.log("[AutoChat] Message content saved:", connectMessage.content?.substring(0, 200));
+        console.log("[AutoChat] Has QUICK_REPLIES in saved content:", connectMessage.content?.includes("QUICK_REPLIES"));
         return connectMessage;
       }
 
       // If already sent, don't respond anymore - let manager handle it
+      console.log("[AutoChat] Quota message already sent, skipping...");
       return null;
     }
 
@@ -993,8 +1012,12 @@ const processCustomerMessage = async (conversationId, customerMessage, action = 
       return responseMessage;
     }
 
-    // Check if this will be the 10th auto-reply
-    const willBeTenthReply = conversation.autoChatMessageCount === MAX_AUTO_CHAT_MESSAGES - 1;
+    // Check if this will be the last auto-reply before reaching the quota limit
+    const willBeLastReply = conversation.autoChatMessageCount === MAX_AUTO_CHAT_MESSAGES - 1;
+    
+    if (willBeLastReply) {
+      console.log("[AutoChat] This will be the last auto-reply! Current count:", conversation.autoChatMessageCount, "Max:", MAX_AUTO_CHAT_MESSAGES);
+    }
 
     // Save booking state and increment message count in parallel
     const updatePromises = [];
@@ -1014,9 +1037,9 @@ const processCustomerMessage = async (conversationId, customerMessage, action = 
       messageContent += `\n<!-- QUICK_REPLIES:${quickRepliesJson} -->`;
     }
 
-    // After 9 messages (before sending 10th), add "Talk with manager" option to the 10th reply
-    if (willBeTenthReply) {
-      const talkWithManagerReply = { text: "Talk with Manager", action: "talk_with_manager" };
+    // After reaching max-1 messages (before sending the last auto-reply), add "Chat with Manager" option to the last reply
+    if (willBeLastReply) {
+      const talkWithManagerReply = { text: "Chat with Manager", action: "talk_with_manager" };
       const callDirectlyReply = { text: "Call Directly", action: "call_spa" };
       const existingReplies = botResponse.quickReplies || [];
       const allReplies = [...existingReplies, talkWithManagerReply, callDirectlyReply];
@@ -1031,22 +1054,25 @@ const processCustomerMessage = async (conversationId, customerMessage, action = 
       content: messageContent,
     });
 
-    // If this was the 10th auto-reply, immediately send manager connection message
-    if (willBeTenthReply) {
+    // If this was the last auto-reply before reaching max, immediately send manager connection message
+    if (willBeLastReply) {
       const phone = managerDetails?.phone || "+91 9125846358";
       const businessName = managerDetails?.businessName || "Our Spa";
       
-      // Disable auto-chat after 10 messages
+      // Disable auto-chat after max messages
       await Conversation.findByIdAndUpdate(conversationId, { autoChatEnabled: false });
 
-      const talkWithManagerReply = { text: "Talk with Manager", action: "talk_with_manager" };
+      const talkWithManagerReply = { text: "Chat with Manager", action: "talk_with_manager" };
       const callDirectlyReply = { text: "Call Directly", action: "call_spa" };
       const quickRepliesJson = JSON.stringify([talkWithManagerReply, callDirectlyReply]);
       
       const connectMessageContent =
-        `Thank you for your patience! We are connecting you with our manager at ${businessName}. They will respond shortly.\n\n` +
-        `In the meantime, you can call us directly at: ${phone}\n\n` +
-        `Please allow a few moments for our manager to join the conversation.\n<!-- QUICK_REPLIES:${quickRepliesJson} -->`;
+        `You have reached your auto reply quota. Now you can chat with our manager or call directly.\n\n` +
+        `Call us directly at: ${phone}\n\n` +
+        `Our manager at ${businessName} will respond to your messages soon.\n<!-- QUICK_REPLIES:${quickRepliesJson} -->`;
+
+      console.log("[AutoChat] Quota message content with quick replies (after last reply):", connectMessageContent);
+      console.log("[AutoChat] Quick replies JSON:", quickRepliesJson);
 
       const connectMessage = await createMessage({
         conversationId: conversationId.toString(),
@@ -1055,12 +1081,16 @@ const processCustomerMessage = async (conversationId, customerMessage, action = 
         content: connectMessageContent,
       });
 
+      console.log("[AutoChat] ✅ Sent quota reached message (after last auto-reply):", connectMessage._id, "and last auto-reply:", responseMessage._id, "for conversation:", conversationId);
+      console.log("[AutoChat] Message content saved:", connectMessage.content?.substring(0, 200));
+      console.log("[AutoChat] Has QUICK_REPLIES in saved content:", connectMessage.content?.includes("QUICK_REPLIES"));
+      
       // Return both messages - controller will handle emitting them separately
-      // We'll return the connect message as primary, and the 10th reply will be sent first via socket
+      // We'll return the connect message as primary, and the last auto-reply will be sent first via socket
       // Actually, we need to return a structure that allows both to be sent
-      // For now, return connect message and emit the 10th reply separately in controller
-      // Store the 10th reply in responseMessage metadata or return it as a special case
-      return { primary: connectMessage, secondary: responseMessage, isTenthReply: true };
+      // For now, return connect message and emit the last auto-reply separately in controller
+      // Store the last auto-reply in responseMessage metadata or return it as a special case
+      return { primary: connectMessage, secondary: responseMessage, isTenthReply: true }; // Keep isTenthReply for backward compatibility
     }
 
     return responseMessage;

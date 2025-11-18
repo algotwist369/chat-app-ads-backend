@@ -33,29 +33,35 @@ const authLimiter = buildLimiter({
   legacyHeaders: false,
 });
 
-// Message sending rate limiter - per user with reasonable limits for chat conversations
-const messageLimiter = buildLimiter({
-  windowMs: 5 * 60 * 1000, // 5 minutes (more reasonable window for chat)
-  max: Number(process.env.MESSAGE_RATE_PER_WINDOW || 1000), // Allow up to 1000 messages per 5 minutes per user
-  message: "Too many messages sent, please slow down.",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Priority: authenticated userId > authorId from body > IP
-    // This ensures each user has their own rate limit, not shared by IP
-    if (req.userId) {
-      return `user:${req.userId}`;
-    }
-    if (req.body?.authorId) {
-      return `author:${req.body.authorId}`;
-    }
-    return `ip:${req.ip}`;
-  },
-  skip: (req) => {
-    // Skip rate limiting for system messages
-    return req.body?.authorType === "system";
-  },
-});
+// Message sending rate limiter - COMPLETELY DISABLED
+// Message rate limiting is disabled to avoid throttling chat conversations
+// To enable, set ENABLE_MESSAGE_RATE_LIMIT=true in environment
+const messageRateEnabled = process.env.ENABLE_MESSAGE_RATE_LIMIT === "true";
+const messageLimiter = messageRateEnabled
+  ? buildLimiter({
+      windowMs: 1 * 60 * 1000, // 1 minute window
+      max: Number(process.env.MESSAGE_RATE_PER_WINDOW || 10000), // Allow up to 10000 messages per minute per user
+      message: "Too many messages sent, please slow down.",
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => {
+        // Priority: authenticated userId > authorId from body > IP
+        // This ensures each user has their own rate limit, not shared by IP
+        if (req.userId) {
+          return `user:${req.userId}`;
+        }
+        if (req.body?.authorId) {
+          return `author:${req.body.authorId}`;
+        }
+        return `ip:${req.ip}`;
+      },
+      skip: (req) => {
+        // Skip rate limiting for system messages
+        if (req.body?.authorType === "system") return true;
+        return false;
+      },
+    })
+  : disabledLimiter; // Completely disabled - no rate limiting at all
 
 // File upload rate limiter - 10 uploads per 15 minutes
 const uploadLimiter = buildLimiter({

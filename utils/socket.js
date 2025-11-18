@@ -149,18 +149,45 @@ const registerSocketHandlers = (io) => {
             // Process auto-response asynchronously
             processCustomerMessage(serialized.conversationId, payload.content, payload.action)
               .then((autoResponse) => {
-                if (autoResponse) {
-                  const autoSerialized = serializeMessage(autoResponse);
-                  io.to(room).emit("message:new", autoSerialized);
-                  
-                  // Update conversation
-                  getConversationById(serialized.conversationId)
-                    .then((updatedConv) => {
-                      const convSerialized = serializeConversation(updatedConv, []);
-                      io.to(`manager:${updatedConv.manager}`).emit("conversation:updated", convSerialized);
-                      io.to(`customer:${updatedConv.customer}`).emit("conversation:updated", convSerialized);
-                    })
-                    .catch((err) => console.error("Failed to update conversation:", err));
+                if (autoResponse && io) {
+                  // Handle case where last auto-reply returns both messages (quota reached)
+                  if (autoResponse.isTenthReply && autoResponse.secondary && autoResponse.primary) {
+                    // Send the last regular auto-reply first
+                    const secondarySerialized = serializeMessage(autoResponse.secondary);
+                    console.log("[Socket] Emitting last auto-reply message:", secondarySerialized.id, "to conversation:", serialized.conversationId);
+                    io.to(room).emit("message:new", secondarySerialized);
+                    
+                    // Small delay to ensure messages appear in correct order
+                    setTimeout(() => {
+                      // Then send the quota reached message
+                      const primarySerialized = serializeMessage(autoResponse.primary);
+                      console.log("[Socket] Emitting quota reached message:", primarySerialized.id, "to conversation:", serialized.conversationId);
+                      io.to(room).emit("message:new", primarySerialized);
+                      
+                      // Update conversation after both messages are sent
+                      getConversationById(serialized.conversationId)
+                        .then((updatedConv) => {
+                          const convSerialized = serializeConversation(updatedConv, []);
+                          io.to(`manager:${updatedConv.manager}`).emit("conversation:updated", convSerialized);
+                          io.to(`customer:${updatedConv.customer}`).emit("conversation:updated", convSerialized);
+                        })
+                        .catch((err) => console.error("Failed to update conversation:", err));
+                    }, 100);
+                  } else {
+                    // Normal case - single auto-response (includes quota message when already at limit)
+                    const autoSerialized = serializeMessage(autoResponse);
+                    console.log("[Socket] Emitting auto-response message:", autoSerialized.id, "to conversation:", serialized.conversationId, "content preview:", autoSerialized.content?.substring(0, 50));
+                    io.to(room).emit("message:new", autoSerialized);
+                    
+                    // Update conversation
+                    getConversationById(serialized.conversationId)
+                      .then((updatedConv) => {
+                        const convSerialized = serializeConversation(updatedConv, []);
+                        io.to(`manager:${updatedConv.manager}`).emit("conversation:updated", convSerialized);
+                        io.to(`customer:${updatedConv.customer}`).emit("conversation:updated", convSerialized);
+                      })
+                      .catch((err) => console.error("Failed to update conversation:", err));
+                  }
                 }
               })
               .catch((error) => {
