@@ -1,9 +1,13 @@
 const { validationResult } = require("express-validator");
 require("dotenv").config();
-const { Customer, Conversation } = require("../models");
+const { Customer, Conversation, RefreshToken } = require("../models");
 const { serializeCustomer, serializeManager } = require("../utils/serializers");
 const asyncHandler = require("../utils/asyncHandler");
-const { signToken } = require("../utils/tokens");
+const {
+  signAccessToken,
+  signRefreshToken,
+  generateRefreshTokenString,
+} = require("../utils/tokens");
 const {
   findManagerByBusinessSlug,
   ensureConversation,
@@ -155,15 +159,40 @@ const customerJoin = asyncHandler(async (req, res) => {
     }
   }
 
-  const token = signToken({
+  // Delete old refresh tokens for this customer (optional: keep last 5)
+  await RefreshToken.deleteMany({
+    userId: customer._id,
+    userType: "customer",
+  });
+
+  // Generate tokens
+  const accessToken = signAccessToken({
     sub: customer._id.toString(),
     role: "customer",
+  });
+
+  const refreshTokenJWT = signRefreshToken({
+    sub: customer._id.toString(),
+    role: "customer",
+  });
+
+  // Store refresh token in database
+  const refreshTokenString = generateRefreshTokenString();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
+
+  await RefreshToken.create({
+    token: refreshTokenString,
+    userId: customer._id,
+    userType: "customer",
+    expiresAt,
   });
 
   res.status(201).json({
     customer: serializeCustomer(customer),
     manager: serializeManager(manager),
-    token,
+    token: accessToken,
+    refreshToken: refreshTokenJWT,
   });
 });
 

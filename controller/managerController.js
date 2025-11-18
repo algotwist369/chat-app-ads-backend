@@ -1,9 +1,13 @@
 require("dotenv").config();
 const bcrypt = require("bcryptjs");
 const { validationResult } = require("express-validator");
-const { Manager } = require("../models");
+const { Manager, RefreshToken } = require("../models");
 const { toBusinessSlug } = require("../utils/slug");
-const { signToken } = require("../utils/tokens");
+const {
+  signAccessToken,
+  signRefreshToken,
+  generateRefreshTokenString,
+} = require("../utils/tokens");
 const { serializeManager } = require("../utils/serializers");
 const asyncHandler = require("../utils/asyncHandler");
 const { ensureConversation } = require("../services/conversationService");
@@ -18,6 +22,37 @@ const handleValidation = (req) => {
     error.details = errors.array();
     throw error;
   }
+};
+
+// Helper function to generate tokens and store refresh token
+const generateTokens = async (userId, role) => {
+  const accessToken = signAccessToken({
+    sub: userId.toString(),
+    role,
+  });
+
+  const refreshTokenJWT = signRefreshToken({
+    sub: userId.toString(),
+    role,
+  });
+
+  // Store refresh token in database
+  const refreshTokenString = generateRefreshTokenString();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
+
+  await RefreshToken.create({
+    token: refreshTokenString,
+    userId,
+    userType: role,
+    expiresAt,
+  });
+
+  return {
+    accessToken,
+    refreshToken: refreshTokenJWT,
+    refreshTokenId: refreshTokenString,
+  };
 };
 
 const registerManager = asyncHandler(async (req, res) => {
@@ -68,14 +103,12 @@ const registerManager = asyncHandler(async (req, res) => {
     logo: logo ?? null,
   });
 
-  const token = signToken({
-    sub: manager._id.toString(),
-    role: "manager",
-  });
+  const { accessToken, refreshToken } = await generateTokens(manager._id, "manager");
 
   res.status(201).json({
     manager: serializeManager(manager),
-    token,
+    token: accessToken,
+    refreshToken,
   });
 });
 
@@ -102,14 +135,18 @@ const loginManager = asyncHandler(async (req, res) => {
   manager.lastLoginAt = new Date();
   await manager.save();
 
-  const token = signToken({
-    sub: manager._id.toString(),
-    role: "manager",
+  // Delete old refresh tokens for this user (optional: keep last 5)
+  await RefreshToken.deleteMany({
+    userId: manager._id,
+    userType: "manager",
   });
+
+  const { accessToken, refreshToken } = await generateTokens(manager._id, "manager");
 
   res.json({
     manager: serializeManager(manager),
-    token,
+    token: accessToken,
+    refreshToken,
   });
 });
 

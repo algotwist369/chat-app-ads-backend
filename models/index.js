@@ -4,6 +4,7 @@ module.exports = {
   Conversation: require("./Conversation"),
   Message: require("./Message"),
   AutoReply: require("./AutoReply"),
+  RefreshToken: require("./RefreshToken"),
 };
 
 
