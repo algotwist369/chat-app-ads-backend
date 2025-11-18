@@ -1,20 +1,26 @@
 const rateLimit = require("express-rate-limit");
 
 // Allow turning rate limits back on by setting ENABLE_RATE_LIMIT=true
-const rateLimitsEnabled = process.env.ENABLE_RATE_LIMIT === "true" || 'true';
+// Default to true (enabled) if not specified, but allow disabling with ENABLE_RATE_LIMIT=false
+const rateLimitsEnabled = process.env.ENABLE_RATE_LIMIT !== "false";
 const disabledLimiter = (req, res, next) => next();
 const buildLimiter = (options) => (rateLimitsEnabled ? rateLimit(options) : disabledLimiter);
 
-// General API rate limiter - relaxed to 1000 requests per 15 minutes per IP to avoid throttling chat UX
+// General API rate limiter - relaxed to 2000 requests per 15 minutes per IP to avoid throttling chat UX
+// Routes with specific rate limiters (like /api/messages) will be excluded to avoid double limiting
 const apiLimiter = buildLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Allow up to 1000 requests per windowMs
+  max: 2000, // Allow up to 2000 requests per windowMs (increased from 1000)
   message: "Too many requests from this IP, please try again later.",
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   skip: (req) => {
     // Skip rate limiting for health checks
-    return req.path === "/health";
+    if (req.path === "/health") return true;
+    // Skip routes that have their own specific rate limiters to avoid double limiting
+    // Message routes have messageLimiter, so skip them here
+    if (req.path && req.path.startsWith("/api/messages")) return true;
+    return false;
   },
 });
 
