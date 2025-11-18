@@ -1,7 +1,12 @@
 const rateLimit = require("express-rate-limit");
 
+// Allow turning rate limits back on by setting ENABLE_RATE_LIMIT=true
+const rateLimitsEnabled = process.env.ENABLE_RATE_LIMIT === "true" || 'true';
+const disabledLimiter = (req, res, next) => next();
+const buildLimiter = (options) => (rateLimitsEnabled ? rateLimit(options) : disabledLimiter);
+
 // General API rate limiter - relaxed to 1000 requests per 15 minutes per IP to avoid throttling chat UX
-const apiLimiter = rateLimit({
+const apiLimiter = buildLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000, // Allow up to 1000 requests per windowMs
   message: "Too many requests from this IP, please try again later.",
@@ -14,7 +19,7 @@ const apiLimiter = rateLimit({
 });
 
 // Strict rate limiter for authentication endpoints - 5 requests per 15 minutes
-const authLimiter = rateLimit({
+const authLimiter = buildLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // Limit each IP to 5 requests per windowMs
   message: "Too many authentication attempts, please try again later.",
@@ -23,7 +28,7 @@ const authLimiter = rateLimit({
 });
 
 // Message sending rate limiter - per user with reasonable limits for chat conversations
-const messageLimiter = rateLimit({
+const messageLimiter = buildLimiter({
   windowMs: 5 * 60 * 1000, // 5 minutes (more reasonable window for chat)
   max: Number(process.env.MESSAGE_RATE_PER_WINDOW || 1000), // Allow up to 1000 messages per 5 minutes per user
   message: "Too many messages sent, please slow down.",
@@ -47,7 +52,7 @@ const messageLimiter = rateLimit({
 });
 
 // File upload rate limiter - 10 uploads per 15 minutes
-const uploadLimiter = rateLimit({
+const uploadLimiter = buildLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // Limit to 10 uploads per 15 minutes
   message: "Too many file uploads, please try again later.",
