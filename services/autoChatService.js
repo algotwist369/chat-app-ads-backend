@@ -2,7 +2,7 @@ const { Message, Conversation, Manager, AutoReply } = require("../models");
 const { createMessage } = require("./messageService");
 const { getConversationById } = require("./conversationService");
 
-const MAX_AUTO_CHAT_MESSAGES = 5;
+const MAX_AUTO_CHAT_MESSAGES = 25;
 
 // Default services (fallback if manager hasn't configured)
 const DEFAULT_SERVICES = [
@@ -114,10 +114,13 @@ const DEFAULT_SERVICES = [
 
 // Default time slots (fallback if manager hasn't configured)
 const DEFAULT_TIME_SLOTS = [
+  { label: "8:00 AM - 10:00 AM", action: "slot_early_morning" },
   { label: "10:00 AM - 12:00 PM", action: "slot_morning" },
   { label: "12:00 PM - 2:00 PM", action: "slot_midday" },
   { label: "2:00 PM - 4:00 PM", action: "slot_afternoon" },
   { label: "4:00 PM - 6:00 PM", action: "slot_evening" },
+  { label: "6:00 PM - 8:00 PM", action: "slot_late_evening" },
+  { label: "8:00 PM - 10:00 PM", action: "slot_night" },
 ];
 
 const SERVICE_CHUNK_SIZE = 5;
@@ -210,6 +213,76 @@ const formatDate = (date) => {
     month: "long",
     day: "numeric",
   });
+};
+
+// Helper to format date for display (short format)
+const formatDateShort = (date) => {
+  if (!date) return "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const compareDate = new Date(date);
+  compareDate.setHours(0, 0, 0, 0);
+  
+  const diffDays = Math.round((compareDate - today) / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return today.toLocaleDateString("en-IN", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  }
+  if (diffDays === 1) {
+    return compareDate.toLocaleDateString("en-IN", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  }
+  
+  return compareDate.toLocaleDateString("en-IN", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+// Helper to generate date options (today, tomorrow, and next 5 days)
+const generateDateOptions = () => {
+  const dates = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Today
+  const todayLabel = `Today (${today.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" })})`;
+  dates.push({
+    label: todayLabel,
+    action: "date_today",
+    date: new Date(today),
+  });
+  
+  // Tomorrow
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowLabel = `Tomorrow (${tomorrow.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" })})`;
+  dates.push({
+    label: tomorrowLabel,
+    action: "date_tomorrow",
+    date: new Date(tomorrow),
+  });
+  
+  // Next 5 days
+  for (let i = 2; i <= 6; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() + i);
+    dates.push({
+      label: formatDate(date),
+      action: `date_${i}`,
+      date: new Date(date),
+    });
+  }
+  
+  return dates;
 };
 
 // Helper to get booking state from conversation metadata
@@ -558,13 +631,307 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
     };
   }
 
-  // Time slot selection
+  // Time slot selection - now asks for date selection first
   const selectedSlot = timeSlots.find(
     (slot) =>
       action === slot.action || lowerMessage.includes(slot.label.toLowerCase()),
   );
 
   if (selectedSlot) {
+    // Check if date was already selected
+    if (bookingState?.date && !bookingState?.confirmed) {
+      // Both time slot and date selected - confirm booking immediately
+      const serviceName = bookingState?.service || "Your selected treatment";
+      const businessName = managerDetails?.businessName || "Our Spa";
+      const locationLink = managerDetails?.locationLink || "https://maps.google.com/?q=Spa+Location";
+      const phone = managerDetails?.phone || "+91 9876543210";
+      const managerName = managerDetails?.managerName || "Our Team";
+
+      const customerDisplayName = customerName ||
+        conversation?.metadata?.customerName ||
+        conversation?.customer?.name ||
+        "Valued Guest";
+
+      let appointmentDate = bookingState.date instanceof Date 
+        ? bookingState.date 
+        : new Date(bookingState.date);
+
+      if (isNaN(appointmentDate.getTime())) {
+        appointmentDate = new Date();
+        appointmentDate.setDate(appointmentDate.getDate() + 1);
+      }
+
+      const formattedDate = formatDate(appointmentDate);
+      const offerClaimed = bookingState?.offerClaimed === true;
+      const offerText = offerClaimed ? " + FREE Neck Massage / 10% OFF" : "";
+      
+      const customResponse = autoReplyConfig?.responses?.bookingConfirmed;
+      
+      if (customResponse?.content) {
+        let content = customResponse.content
+          .replace(/\{customerName\}/g, customerDisplayName || "Valued Guest")
+          .replace(/\{date\}/g, formattedDate)
+          .replace(/\{time\}/g, selectedSlot.label)
+          .replace(/\{serviceName\}/g, serviceName)
+          .replace(/\{offerText\}/g, offerText)
+          .replace(/\{therapistName\}/g, managerName || "Our Therapist")
+          .replace(/\{locationLink\}/g, locationLink)
+          .replace(/\{businessName\}/g, businessName);
+
+        if (!content.includes("✅") && !content.includes("BOOKING CONFIRMED")) {
+          content = `✅ BOOKING CONFIRMED ✅\n\n🎉 ${content}`;
+        }
+
+        return {
+          content,
+          quickReplies: customResponse.quickReplies.length > 0
+            ? customResponse.quickReplies
+            : [
+                { text: "Change Time", action: "book_now" },
+                { text: "View Location", action: "spa_location" },
+                { text: "Call the Spa", action: "call_spa" },
+                { text: "Chat with Manager", action: "talk_with_manager" },
+              ],
+          bookingData: {
+            ...bookingState,
+            timeSlot: selectedSlot.label,
+            date: appointmentDate,
+            confirmed: true,
+          },
+        };
+      }
+
+      return {
+        content:
+          `✅ BOOKING CONFIRMED ✅\n\n` +
+          `🎉 Your appointment has been successfully confirmed!\n\n` +
+          `Dear ${customerDisplayName || 'Valued Guest'},\n\n` +
+          `📅 Date: ${formattedDate}\n` +
+          `🕐 Time: ${selectedSlot.label}\n` +
+          `💆 Treatment: ${serviceName}${offerText}\n` +
+          `📍 Location: ${locationLink}\n\n` +
+          `✨ Important Reminders:\n` +
+          `• We recommend arriving 10 minutes early to enjoy a complimentary herbal infusion.\n` +
+          `• To modify: Reply *CHANGE*\n` +
+          `• Questions: Reply *HELP*\n\n` +
+          `We look forward to welcoming you!\n\n` +
+          `Thank you,\n${businessName} Team`,
+        quickReplies: [
+          { text: "Change Time", action: "book_now" },
+          { text: "View Location", action: "spa_location" },
+          { text: "Call the Spa", action: "call_spa" },
+          { text: "Chat with Manager", action: "talk_with_manager" },
+        ],
+        bookingData: {
+          ...bookingState,
+          timeSlot: selectedSlot.label,
+          date: appointmentDate,
+          confirmed: true,
+        },
+      };
+    }
+
+    // Time slot selected but no date selected yet - ask for date
+    const serviceName = bookingState?.service || "Your selected treatment";
+    const dateOptions = generateDateOptions();
+    
+    const customResponse = autoReplyConfig?.responses?.dateSelection;
+    if (customResponse?.content) {
+      let content = customResponse.content
+        .replace(/\{serviceName\}/g, serviceName)
+        .replace(/\{time\}/g, selectedSlot.label);
+      
+      return {
+        content,
+        quickReplies: customResponse.quickReplies.length > 0
+          ? customResponse.quickReplies
+          : [
+              ...dateOptions.slice(0, 4).map((dateOpt) => ({
+                text: dateOpt.label,
+                action: dateOpt.action,
+              })),
+              { text: "Change Time", action: "book_now" },
+              { text: "Call the Spa", action: "call_spa" },
+            ],
+        bookingData: {
+          ...(bookingState || {}),
+          timeSlot: selectedSlot.label,
+        },
+      };
+    }
+
+    return {
+      content: `**${serviceName}**\n**Time:** ${selectedSlot.label}\n\n📅 Please select your preferred date:`,
+      quickReplies: [
+        ...dateOptions.slice(0, 4).map((dateOpt) => ({
+          text: dateOpt.label,
+          action: dateOpt.action,
+        })),
+        { text: "More Dates", action: "date_more" },
+        { text: "Change Time", action: "book_now" },
+        { text: "Call the Spa", action: "call_spa" },
+      ],
+      bookingData: {
+        ...(bookingState || {}),
+        timeSlot: selectedSlot.label,
+      },
+    };
+  }
+
+  // Date selection handling
+  if (action?.startsWith("date_") || lowerMessage.includes("today") || lowerMessage.includes("tomorrow")) {
+    const dateOptions = generateDateOptions();
+    let selectedDateOption = null;
+
+    if (action === "date_today") {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      selectedDateOption = dateOptions.find(opt => opt.action === "date_today");
+    } else if (action === "date_tomorrow") {
+      selectedDateOption = dateOptions.find(opt => opt.action === "date_tomorrow");
+    } else if (action?.startsWith("date_") && action !== "date_more") {
+      // Handle custom date actions (date_2, date_3, etc.)
+      selectedDateOption = dateOptions.find(opt => opt.action === action);
+    } else if (lowerMessage.includes("today")) {
+      selectedDateOption = dateOptions.find(opt => opt.action === "date_today");
+    } else if (lowerMessage.includes("tomorrow")) {
+      selectedDateOption = dateOptions.find(opt => opt.action === "date_tomorrow");
+    }
+
+    if (selectedDateOption) {
+      // Check if time slot was already selected
+      if (!bookingState?.timeSlot) {
+        // No time slot selected yet, ask for it first
+        const serviceName = bookingState?.service || "Your selected treatment";
+        return {
+          content: `You've selected the date. Now please choose your preferred time slot for **${serviceName}**:`,
+          quickReplies: [
+            ...timeSlots.map((slot) => ({
+              text: slot.label,
+              action: slot.action,
+            })),
+            { text: "Change Service", action: "book_now" },
+            { text: "Call the Spa", action: "call_spa" },
+          ],
+          bookingData: {
+            ...(bookingState || {}),
+            date: selectedDateOption.date,
+          },
+        };
+      }
+
+      // Date selected, now confirm booking
+      const serviceName = bookingState?.service || "Your selected treatment";
+      const timeSlotLabel = bookingState?.timeSlot || "Selected time";
+      const appointmentDate = selectedDateOption.date;
+      const formattedDate = formatDate(appointmentDate);
+      
+      // Continue to booking confirmation with selected date
+      // (this will be handled by the booking confirmation logic below)
+      const businessName = managerDetails?.businessName || "Our Spa";
+      const locationLink = managerDetails?.locationLink || "https://maps.google.com/?q=Spa+Location";
+      const phone = managerDetails?.phone || "+91 9876543210";
+      const managerName = managerDetails?.managerName || "Our Team";
+
+      // Get customer name from conversation metadata or parameter
+      const customerDisplayName = customerName ||
+        conversation?.metadata?.customerName ||
+        conversation?.customer?.name ||
+        "Valued Guest";
+
+      // Determine if offer was claimed
+      const offerClaimed = bookingState?.offerClaimed === true;
+      const offerText = offerClaimed ? " + FREE Neck Massage / 10% OFF" : "";
+      
+      const customResponse = autoReplyConfig?.responses?.bookingConfirmed;
+      
+      if (customResponse?.content) {
+        let content = customResponse.content
+          .replace(/\{customerName\}/g, customerDisplayName || "Valued Guest")
+          .replace(/\{date\}/g, formattedDate)
+          .replace(/\{time\}/g, timeSlotLabel)
+          .replace(/\{serviceName\}/g, serviceName)
+          .replace(/\{offerText\}/g, offerText)
+          .replace(/\{therapistName\}/g, managerName || "Our Therapist")
+          .replace(/\{locationLink\}/g, locationLink)
+          .replace(/\{businessName\}/g, businessName);
+
+        // Add highlighting markers for booking confirmation if custom content doesn't already have them
+        if (!content.includes("✅") && !content.includes("BOOKING CONFIRMED")) {
+          content = `✅ BOOKING CONFIRMED ✅\n\n🎉 ${content}`;
+        }
+
+        return {
+          content,
+          quickReplies: customResponse.quickReplies.length > 0
+            ? customResponse.quickReplies
+            : [
+                { text: "Change Time", action: "book_now" },
+                { text: "View Location", action: "spa_location" },
+                { text: "Call the Spa", action: "call_spa" },
+                { text: "Chat with Manager", action: "talk_with_manager" },
+              ],
+          bookingData: {
+            ...bookingState,
+            timeSlot: timeSlotLabel,
+            date: appointmentDate,
+            confirmed: true,
+          },
+        };
+      }
+
+      return {
+        content:
+          `✅ BOOKING CONFIRMED ✅\n\n` +
+          `🎉 Your appointment has been successfully confirmed!\n\n` +
+          `Dear ${customerDisplayName || 'Valued Guest'},\n\n` +
+          `📅 Date: ${formattedDate}\n` +
+          `🕐 Time: ${timeSlotLabel}\n` +
+          `💆 Treatment: ${serviceName}${offerText}\n` +
+          `📍 Location: ${locationLink}\n\n` +
+          `✨ Important Reminders:\n` +
+          `• We recommend arriving 10 minutes early to enjoy a complimentary herbal infusion.\n` +
+          `• To modify: Reply *CHANGE*\n` +
+          `• Questions: Reply *HELP*\n\n` +
+          `We look forward to welcoming you!\n\n` +
+          `Thank you,\n${businessName} Team`,
+        quickReplies: [
+          { text: "Change Time", action: "book_now" },
+          { text: "View Location", action: "spa_location" },
+          { text: "Call the Spa", action: "call_spa" },
+          { text: "Chat with Manager", action: "talk_with_manager" },
+        ],
+        bookingData: {
+          ...bookingState,
+          timeSlot: timeSlotLabel,
+          date: appointmentDate,
+          confirmed: true,
+        },
+      };
+    } else if (action === "date_more") {
+      // Show more date options
+      const dateOptions = generateDateOptions();
+      const serviceName = bookingState?.service || "Your selected treatment";
+      
+      return {
+        content: `📅 Additional Date Options:\n\nPlease select your preferred date for **${serviceName}**:`,
+        quickReplies: [
+          ...dateOptions.slice(4).map((dateOpt) => ({
+            text: dateOpt.label,
+            action: dateOpt.action,
+          })),
+          { text: "Change Time", action: "book_now" },
+          { text: "Call the Spa", action: "call_spa" },
+        ],
+        bookingData: {
+          ...(bookingState || {}),
+        },
+      };
+    }
+  }
+
+  // Booking confirmation (when time slot and date are both selected)
+  if (selectedSlot && bookingState?.date && !bookingState?.confirmed) {
     const serviceName = bookingState?.service || "Your selected treatment";
     const serviceDesc = bookingState?.serviceDescription || "";
     const businessName = managerDetails?.businessName || "Our Spa";
@@ -578,15 +945,10 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
       conversation?.customer?.name ||
       "Valued Guest";
 
-    // Generate a date (tomorrow by default, or use stored date)
-    let appointmentDate;
-    if (bookingState?.date) {
-      appointmentDate = bookingState.date instanceof Date ? bookingState.date : new Date(bookingState.date);
-    } else {
-      // Default to tomorrow
-      appointmentDate = new Date();
-      appointmentDate.setDate(appointmentDate.getDate() + 1);
-    }
+    // Use the stored date from booking state
+    let appointmentDate = bookingState.date instanceof Date 
+      ? bookingState.date 
+      : new Date(bookingState.date);
 
     // Ensure date is valid
     if (isNaN(appointmentDate.getTime())) {
@@ -613,6 +975,12 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
         .replace(/\{locationLink\}/g, locationLink)
         .replace(/\{businessName\}/g, businessName);
 
+      // Add highlighting markers for booking confirmation if custom content doesn't already have them
+      if (!content.includes("✅") && !content.includes("BOOKING CONFIRMED")) {
+        // Prepend confirmation markers to make it more noticeable
+        content = `✅ BOOKING CONFIRMED ✅\n\n🎉 ${content}`;
+      }
+
       return {
         content,
         quickReplies: customResponse.quickReplies.length > 0
@@ -634,17 +1002,19 @@ const getBotResponse = async (message, action = null, _messageCount = 0, convers
 
     return {
       content:
-        `Booking Confirmed\n\n` +
+        `✅ BOOKING CONFIRMED ✅\n\n` +
+        `🎉 Your appointment has been successfully confirmed!\n\n` +
         `Dear ${customerDisplayName || 'Valued Guest'},\n\n` +
-        `Date: ${formattedDate}\n` +
-        `Time: ${selectedSlot.label}\n` +
-        `Treatment: ${serviceName}${offerText}\n` +
-        `Location: ${locationLink}\n\n` +
-        `We recommend arriving 10 minutes early to enjoy a complimentary herbal infusion.\n\n` +
-        `To modify: Reply *CHANGE*\n` +
-        `Questions: Reply *HELP*\n\n` +
-        `We look forward to welcoming you.\n\n` +
-        `${businessName} Team`,
+        `📅 Date: ${formattedDate}\n` +
+        `🕐 Time: ${selectedSlot.label}\n` +
+        `💆 Treatment: ${serviceName}${offerText}\n` +
+        `📍 Location: ${locationLink}\n\n` +
+        `✨ Important Reminders:\n` +
+        `• We recommend arriving 10 minutes early to enjoy a complimentary herbal infusion.\n` +
+        `• To modify: Reply *CHANGE*\n` +
+        `• Questions: Reply *HELP*\n\n` +
+        `We look forward to welcoming you!\n\n` +
+        `Thank you,\n${businessName} Team`,
       quickReplies: [
         { text: "Change Time", action: "book_now" },
         { text: "View Location", action: "spa_location" },
